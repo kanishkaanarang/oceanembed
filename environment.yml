@@ -1,0 +1,20 @@
+name: oceanembed
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - xarray
+      - netcdf4
+      - argopy
+      - erddapy==2.2.1
+      - copernicusmarine
+      - numpy
+      - pandas
+      - scipy
+      - scikit-learn
+      - xgboost
+      - torch
+      - shap
+      - matplotlib
+      - cartopy
+      - jupyterlab

@@ -1,0 +1,45 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# --- Conda / virtual environments ---
+venv/
+.venv/
+env/
+
+# --- Data (large, re-downloadable — don't commit) ---
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.nc
+*.netcdf
+
+# --- Model outputs / results (large or regenerable) ---
+results/*.pt
+results/*.pth
+results/*.h5
+results/*.pkl
+
+# --- Credentials / secrets ---
+.env
+*.key
+copernicusmarine-credentials*
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+
+# --- LaTeX build artifacts (for your paper later) ---
+*.aux
+*.log
+*.out
+*.synctex.gz
