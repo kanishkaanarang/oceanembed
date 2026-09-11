@@ -5,6 +5,6 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: './',
-  server: { port: 5173, strictPort: true },
+  server: { port: 5174, strictPort: false },
   build: { rollupOptions: { output: { manualChunks: { charts: ['recharts'] } } } },
 });
