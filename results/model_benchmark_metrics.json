@@ -1,0 +1,89 @@
+{
+  "temperature": {
+    "overall_rmse": 1.345,
+    "overall_mae": 0.147,
+    "overall_r2": 0.9121
+  },
+  "salinity": {
+    "overall_rmse": 1.943,
+    "overall_mae": 0.085,
+    "overall_r2": 0.7612
+  },
+  "depth_breakdown": [
+    {
+      "depth": 0,
+      "temp_rmse": 0.009,
+      "sal_rmse": 0.02
+    },
+    {
+      "depth": 5,
+      "temp_rmse": 0.014,
+      "sal_rmse": 0.026
+    },
+    {
+      "depth": 10,
+      "temp_rmse": 0.027,
+      "sal_rmse": 0.039
+    },
+    {
+      "depth": 20,
+      "temp_rmse": 0.087,
+      "sal_rmse": 0.084
+    },
+    {
+      "depth": 30,
+      "temp_rmse": 0.139,
+      "sal_rmse": 0.125
+    },
+    {
+      "depth": 50,
+      "temp_rmse": 0.178,
+      "sal_rmse": 0.201
+    },
+    {
+      "depth": 75,
+      "temp_rmse": 0.23,
+      "sal_rmse": 0.341
+    },
+    {
+      "depth": 100,
+      "temp_rmse": 0.322,
+      "sal_rmse": 0.474
+    },
+    {
+      "depth": 125,
+      "temp_rmse": 0.395,
+      "sal_rmse": 0.63
+    },
+    {
+      "depth": 150,
+      "temp_rmse": 0.474,
+      "sal_rmse": 0.746
+    },
+    {
+      "depth": 200,
+      "temp_rmse": 0.66,
+      "sal_rmse": 1.062
+    },
+    {
+      "depth": 300,
+      "temp_rmse": 1.041,
+      "sal_rmse": 1.688
+    },
+    {
+      "depth": 500,
+      "temp_rmse": 1.903,
+      "sal_rmse": 2.835
+    },
+    {
+      "depth": 700,
+      "temp_rmse": 2.835,
+      "sal_rmse": 3.977
+    },
+    {
+      "depth": 900,
+      "temp_rmse": 3.658,
+      "sal_rmse": 5.238
+    }
+  ]
+}

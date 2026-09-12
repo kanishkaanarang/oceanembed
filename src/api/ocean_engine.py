@@ -132,27 +132,50 @@ def predict_full_column(lat: float, lon: float, date: str = "2023-01-05", depths
     # Calculate day of year
     doy = pd.Timestamp(date).dayofyear if date else 15
     
-    # Thermocline decay model guided by satellite SST, SSS, and SSH
-    # SSH anomaly directly modulates thermocline depth: positive SSH pushes thermocline deeper (warm eddy)
-    thermocline_depth = 80.0 + (ssh * 50.0) # warm eddy deepens, cold eddy shoals
-    deep_ocean_temp = 4.2 # at 1000m
+    # Load trained Multi-Task Model if available
+    model_path = os.path.join(os.path.dirname(__file__), "../../results/multitask_ocean_model.pkl")
+    ml_predicted = False
     
+    if os.path.exists(model_path):
+        try:
+            import joblib
+            model = joblib.load(model_path)
+            doy_sin = math.sin(2 * math.pi * doy / 365.25)
+            doy_cos = math.cos(2 * math.pi * doy / 365.25)
+            u = sat.get("current_u", 0.0)
+            v = sat.get("current_v", 0.0)
+            spd = math.hypot(u, v)
+            
+            feat_df = pd.DataFrame([{
+                "lat": lat, "lon": lon,
+                "doy_sin": doy_sin, "doy_cos": doy_cos,
+                "sst": sst, "sss": sss, "ssh": ssh,
+                "current_u": u, "current_v": v, "current_speed": spd
+            }])
+            raw_pred = model.predict(feat_df)[0]
+            # First 15 outputs are temp, next 15 are salinity
+            model_target_depths = [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 900]
+            temp_dict = {d: raw_pred[idx] for idx, d in enumerate(model_target_depths)}
+            sal_dict = {d: raw_pred[15 + idx] for idx, d in enumerate(model_target_depths)}
+            ml_predicted = True
+        except Exception:
+            ml_predicted = False
+
     points = []
     previous_density = None
     inversion_detected = False
     
     for d in depths:
-        # Physics-informed profile shape (logistic thermocline transition)
-        sigmoid = 1.0 / (1.0 + math.exp((d - thermocline_depth) / 45.0))
-        temp = deep_ocean_temp + (sst - deep_ocean_temp) * sigmoid
-        # Add slight latitudinal cooling
-        temp -= max(0, (abs(lat) - 10.0) * 0.1)
-        temp = round(max(3.0, min(32.0, temp)), 2)
-        
-        # Salinity profile (halocline in Bay of Bengal: fresh water at surface 32-33 PSU, rising to ~35 PSU at depth)
-        deep_ocean_sal = 34.85
-        sal = sss + (deep_ocean_sal - sss) * (1.0 - math.exp(-d / 120.0))
-        sal = round(max(28.0, min(36.5, sal)), 2)
+        if ml_predicted and d in temp_dict and d in sal_dict:
+            temp = round(float(temp_dict[d]), 2)
+            sal = round(float(sal_dict[d]), 2)
+        else:
+            # Physics-informed fallback transition
+            sigmoid = 1.0 / (1.0 + math.exp((d - thermocline_depth) / 45.0))
+            temp = deep_ocean_temp + (sst - deep_ocean_temp) * sigmoid
+            temp = round(max(3.0, min(32.0, temp)), 2)
+            sal = sss + (34.85 - sss) * (1.0 - math.exp(-d / 120.0))
+            sal = round(max(28.0, min(36.5, sal)), 2)
         
         # Calculate derived physics
         rho = compute_seawater_density(temp, sal, d)
