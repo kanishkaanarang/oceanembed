@@ -16,10 +16,17 @@ env/
 # --- Data (large, re-downloadable — don't commit) ---
 data/raw/*
 data/processed/*
+notebooks/data/raw/*
+notebooks/data/processed/*
+
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!notebooks/data/raw/.gitkeep
+!notebooks/data/processed/.gitkeep
+
 *.nc
 *.netcdf
+*.npz
 
 # --- Model outputs / results (large or regenerable) ---
 results/*.pt
