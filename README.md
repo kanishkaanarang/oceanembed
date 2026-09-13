@@ -127,6 +127,12 @@ streamlit run app.py
 ```
 Open **`http://localhost:8501`** in your browser to interact with the model.
 
+> **💡 Out-of-the-Box Ready**: The repository includes the trained PyTorch weights (`notebooks/results/oceanembed_cnn_best_v2.pt`) and an embedded compact reference dataset (`data/processed/oceanembed_reference_compact.npz`), so the application runs immediately upon cloning without any additional downloads!
+>
+> **Optional Full Reanalysis Arrays**: To use the complete 150-day Copernicus satellite arrays (250MB), simply place `training_arrays_v2_normalized.npz` into `training_arrays_v2_normalized/` or `data/processed/`. The application detects and switches to it automatically.
+>
+> **🎨 Light / Dark Theme**: OceanEmbed launches in a crisp, clean Light theme by default, and includes a one-click **Dark mode** toggle in the sidebar for nighttime oceanographic analysis.
+
 ---
 
 ## 📂 Project Structure
