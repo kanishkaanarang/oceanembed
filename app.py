@@ -21,6 +21,7 @@ from backend import (
     field,
     generate_profile_interpretation,
     get_depth_metrics,
+    get_engine,
     get_surface_conditions,
     list_saved_locations,
     load_catalogue,
@@ -139,6 +140,7 @@ COASTAL_LANDMARKS = [
 
 def initialize_state() -> None:
     defaults = {
+        "dark_mode": False,  # Default to Light theme!
         "analysis_date": date(2023, 3, 1),
         "latitude": 14.5,
         "longitude": 88.0,
@@ -153,6 +155,121 @@ def initialize_state() -> None:
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
+
+
+initialize_state()
+is_dark = st.session_state.get("dark_mode", False)
+
+if is_dark:
+    st.html(
+        """
+        <style>
+        [data-testid="stAppViewContainer"], .stApp {
+          background-color: #071b2a !important;
+          color: #e7f4f8 !important;
+        }
+        [data-testid="stSidebar"] {
+          background-color: #0c2433 !important;
+          color: #e7f4f8 !important;
+          border-right: 1px solid #1a425a !important;
+        }
+        [data-testid="stHeader"] {
+          background-color: rgba(7, 27, 42, 0.8) !important;
+        }
+        .st-key-hero {
+          background: radial-gradient(circle at 88% 18%, rgba(0, 210, 255, 0.22), transparent 26%), linear-gradient(115deg, #0d2a3e, #071b2a 62%) !important;
+          border-color: #1a425a !important;
+        }
+        .st-key-hero h1, .st-key-hero p, .st-key-hero span {
+          color: #e7f4f8 !important;
+        }
+        .st-key-metrics [data-testid="stMetric"], .st-key-depth-cards [data-testid="stMetric"], .st-key-surface-cards [data-testid="stMetric"], .st-key-comparison-cards [data-testid="stMetric"] {
+          background: linear-gradient(145deg, #0d2a3e, #092030) !important;
+          border: 1px solid #1a425a !important;
+          color: #e7f4f8 !important;
+          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25) !important;
+        }
+        [data-testid="stMetricLabel"] p {
+          color: #94a3b8 !important;
+        }
+        [data-testid="stMetricValue"] {
+          color: #f1f5f9 !important;
+        }
+        .st-key-map-card, .st-key-profile-card, .st-key-depth-table-card,
+        .st-key-casts-card, .st-key-validation-card, .st-key-catalogue-card,
+        .st-key-data-card, .st-key-saved-card, .st-key-quality-notes, .st-key-explore-guide,
+        .st-key-summary-card, .st-key-hotspot-card, .st-key-sounding-inspect {
+          background: #0c2433 !important;
+          border: 1px solid #1a425a !important;
+          color: #e7f4f8 !important;
+        }
+        .st-key-summary-card p, .st-key-summary-card strong {
+          color: #e7f4f8 !important;
+        }
+        [data-testid="stTabs"] [role="tab"] {
+          color: #94a3b8 !important;
+        }
+        [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+          color: #00d2ff !important;
+        }
+        </style>
+        """
+    )
+else:
+    st.html(
+        """
+        <style>
+        [data-testid="stAppViewContainer"], .stApp {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+        }
+        [data-testid="stSidebar"] {
+          background-color: #f8fafc !important;
+          color: #0f172a !important;
+          border-right: 1px solid #e2e8f0 !important;
+        }
+        .st-key-hero {
+          background: radial-gradient(circle at 88% 18%, rgba(2, 132, 199, 0.15), transparent 26%), linear-gradient(115deg, #e0f2fe, #f8fafc 62%) !important;
+          border-color: #bae6fd !important;
+        }
+        .st-key-hero h1 {
+          color: #0369a1 !important;
+        }
+        .st-key-hero p, .st-key-hero span {
+          color: #334155 !important;
+        }
+        .st-key-metrics [data-testid="stMetric"], .st-key-depth-cards [data-testid="stMetric"], .st-key-surface-cards [data-testid="stMetric"], .st-key-comparison-cards [data-testid="stMetric"] {
+          background: linear-gradient(145deg, #ffffff, #f1f5f9) !important;
+          border: 1px solid #e2e8f0 !important;
+          color: #0f172a !important;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
+        }
+        [data-testid="stMetricLabel"] p {
+          color: #64748b !important;
+        }
+        [data-testid="stMetricValue"] {
+          color: #0f172a !important;
+        }
+        .st-key-map-card, .st-key-profile-card, .st-key-depth-table-card,
+        .st-key-casts-card, .st-key-validation-card, .st-key-catalogue-card,
+        .st-key-data-card, .st-key-saved-card, .st-key-quality-notes, .st-key-explore-guide,
+        .st-key-summary-card, .st-key-hotspot-card, .st-key-sounding-inspect {
+          background: #ffffff !important;
+          border: 1px solid #e2e8f0 !important;
+          color: #0f172a !important;
+        }
+        .st-key-summary-card p, .st-key-summary-card strong {
+          color: #1e293b !important;
+        }
+        [data-testid="stTabs"] [role="tab"] {
+          color: #64748b !important;
+        }
+        [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+          color: #0284c7 !important;
+        }
+        </style>
+        """
+    )
 
 
 def record_interaction() -> None:
@@ -217,14 +334,14 @@ def update_location_from_map_selection() -> None:
 
 
 def plot_colors() -> dict[str, str]:
-    is_dark = st.context.theme.type == "dark"
+    is_dark = st.session_state.get("dark_mode", False)
     return {
-        "paper": "#071b2a" if is_dark else "#fbfcfe",
-        "panel": "#0c2433" if is_dark else "#eef4f7",
-        "text": "#e7f4f8" if is_dark else "#152b37",
-        "grid": "#245066" if is_dark else "#d5e2e7",
-        "model": "#00d2ff" if is_dark else "#0077b6",
-        "reference": "#ff9e00" if is_dark else "#d95d39",
+        "paper": "#071b2a" if is_dark else "#ffffff",
+        "panel": "#0c2433" if is_dark else "#f8fafc",
+        "text": "#e7f4f8" if is_dark else "#0f172a",
+        "grid": "#245066" if is_dark else "#e2e8f0",
+        "model": "#00d2ff" if is_dark else "#0284c7",
+        "reference": "#ff9e00" if is_dark else "#d97706",
     }
 
 
@@ -460,7 +577,6 @@ def clear_locations() -> None:
     st.toast("Saved locations cleared.", icon=":material/delete_sweep:")
 
 
-initialize_state()
 catalogue = load_catalogue()
 depth_metrics = get_depth_metrics()
 analysis_dates = list(pd.date_range(ANALYSIS_START, ANALYSIS_END, freq="D").date)
@@ -468,7 +584,15 @@ analysis_dates = list(pd.date_range(ANALYSIS_START, ANALYSIS_END, freq="D").date
 with st.sidebar:
     st.title("OceanEmbed", icon=":material/waves:")
     st.caption("Deep Learning Subsurface Ocean Reconstruction")
-    st.badge("PyTorch CNN · Live Model Connected", icon=":material/bolt:", color="green")
+    engine_obj = get_engine()
+    dataset_label = "150-Day Reanalysis" if not engine_obj.is_compact else "Compact Reference Dataset"
+    st.badge(f"PyTorch CNN · {dataset_label}", icon=":material/bolt:", color="green")
+    st.toggle(
+        "Dark mode",
+        key="dark_mode",
+        on_change=record_interaction,
+        help="Switch between Light and Dark interface styles",
+    )
 
     st.subheader("Regional Hotspots")
     preset_names = {p["id"]: f"{p['name']} ({p['badge']})" for p in REGIONAL_PRESETS}
@@ -510,17 +634,20 @@ with st.sidebar:
     st.button("Save current location", icon=":material/bookmark_add:", width="stretch", on_click=save_current_location, key="save-location")
 
     with st.expander("Live Model & Data Proof", icon=":material/verified_user:"):
+        dataset_name = "Full 150-Day Satellite Observation Arrays (0.25° Grid)" if not engine_obj.is_compact else "Compact Reference Arrays (0.25° Grid)"
         st.markdown(
-            """
+            f"""
             - **Status**: Live PyTorch Inference Active
             - **Weights**: `oceanembed_cnn_best_v2.pt` (Loaded)
             - **Parameters**: 60,495 trainable weights
-            - **Arrays**: `training_arrays_v2_normalized.npz` (150 days)
+            - **Dataset**: {dataset_name}
             - **Grid**: 0.25° horizontal (24,000 nodes)
             - **Depths**: 15 levels (0m–1000m)
             - **Backend**: Real tensor forward pass (NOT dummy synthetic)
             """
         )
+        if engine_obj.is_compact:
+            st.info("💡 **Full Dataset Notice**: Running on embedded compact dataset. For full 150-day satellite historical arrays (250MB), place `training_arrays_v2_normalized.npz` in `training_arrays_v2_normalized/` or `data/processed/`.")
 
 
 analysis_date = st.session_state.analysis_date

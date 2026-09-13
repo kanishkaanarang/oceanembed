@@ -27,6 +27,7 @@ notebooks/data/processed/*
 *.nc
 *.netcdf
 *.npz
+!data/processed/oceanembed_reference_compact.npz
 
 # --- Model outputs / results (large or regenerable) ---
 results/*.pt
