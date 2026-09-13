@@ -50,3 +50,16 @@ Thumbs.db
 *.log
 *.out
 *.synctex.gz
+
+# --- Local database & presentations ---
+oceanembed.db
+*.sqlite
+*.sqlite3
+oceanembed/
+*.docx
+*.pptx
+*.pdf
+extracted_text.txt
+.agents/
+.claude/
+.streamlit-packages/
