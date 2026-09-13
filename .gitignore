@@ -16,10 +16,17 @@ env/
 # --- Data (large, re-downloadable — don't commit) ---
 data/raw/*
 data/processed/*
+notebooks/data/raw/*
+notebooks/data/processed/*
+
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!notebooks/data/raw/.gitkeep
+!notebooks/data/processed/.gitkeep
+
 *.nc
 *.netcdf
+*.npz
 
 # --- Model outputs / results (large or regenerable) ---
 results/*.pt
@@ -43,3 +50,16 @@ Thumbs.db
 *.log
 *.out
 *.synctex.gz
+
+# --- Local database & presentations ---
+oceanembed.db
+*.sqlite
+*.sqlite3
+oceanembed/
+*.docx
+*.pptx
+*.pdf
+extracted_text.txt
+.agents/
+.claude/
+.streamlit-packages/
