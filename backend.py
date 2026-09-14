@@ -553,77 +553,29 @@ def transect(
     variable: str = "Temperature",
     analysis_date: date = ANALYSIS_START,
 ) -> dict[str, Any]:
-    """Return vertical cross-section (curtain slice) across depths and spatial axis."""
-    engine = get_engine()
-    day_idx = _date_to_day_index(analysis_date)
-    day_data = engine.predict_day(day_idx)
+    """Cross-section of the same fields displayed by the horizontal map.
 
-    pred_3d = day_data["pred_celsius"]
-    actual_3d = day_data["actual_celsius"]
-    mask_2d = day_data["ocean_mask"]
-
-    lats = np.linspace(LATITUDE_RANGE[0], LATITUDE_RANGE[1], 100)
-    lons = np.linspace(LONGITUDE_RANGE[0], LONGITUDE_RANGE[1], 240)
-
-    if axis == "lat":
-        lat_idx = int(np.clip(np.argmin(np.abs(lats - coord_value)), 0, 99))
-        actual_lat = float(lats[lat_idx])
-        mask_1d = mask_2d[lat_idx, :]
-
-        if variable in ("Ground Truth", "Ground Truth (GLORYS)"):
-            slice_data = actual_3d[:, lat_idx, :]
-        elif variable in ("Residual", "Error"):
-            slice_data = np.abs(pred_3d[:, lat_idx, :] - actual_3d[:, lat_idx, :])
-        elif variable == "Salinity":
-            sal = 35.0 - (pred_3d[:, lat_idx, :] - 10.0) * 0.08
-            slice_data = np.clip(sal, 32.0, 36.5)
-        elif variable in ("Sound Speed", "Sound Velocity (SVP)"):
-            sal = 35.0 - (pred_3d[:, lat_idx, :] - 10.0) * 0.08
-            slice_data = calc_sound_speed(pred_3d[:, lat_idx, :], sal, DEPTHS[:, None])
-        elif variable in ("Density", "Seawater Density"):
-            sal = 35.0 - (pred_3d[:, lat_idx, :] - 10.0) * 0.08
-            slice_data = calc_density(pred_3d[:, lat_idx, :], sal)
-        else:
-            slice_data = pred_3d[:, lat_idx, :]
-
-        masked_slice = np.where(mask_1d[None, :], slice_data, np.nan)
-        return {
-            "axis_label": "Longitude (°E)",
-            "coords": lons,
-            "depths": DEPTHS,
-            "values": masked_slice,
-            "fixed_label": f"Latitude: {actual_lat:.2f}°N",
-            "fixed_value": actual_lat,
-            "unit": "m/s" if "Sound" in variable else "PSU" if "Salinity" in variable else "kg/m³" if "Density" in variable else "°C",
-        }
-    else:
-        lon_idx = int(np.clip(np.argmin(np.abs(lons - coord_value)), 0, 239))
-        actual_lon = float(lons[lon_idx])
-        mask_1d = mask_2d[:, lon_idx]
-
-        if variable in ("Ground Truth", "Ground Truth (GLORYS)"):
-            slice_data = actual_3d[:, :, lon_idx]
-        elif variable in ("Residual", "Error"):
-            slice_data = np.abs(pred_3d[:, :, lon_idx] - actual_3d[:, :, lon_idx])
-        elif variable == "Salinity":
-            sal = 35.0 - (pred_3d[:, :, lon_idx] - 10.0) * 0.08
-            slice_data = np.clip(sal, 32.0, 36.5)
-        elif variable in ("Sound Speed", "Sound Velocity (SVP)"):
-            sal = 35.0 - (pred_3d[:, :, lon_idx] - 10.0) * 0.08
-            slice_data = calc_sound_speed(pred_3d[:, :, lon_idx], sal, DEPTHS[:, None])
-        elif variable in ("Density", "Seawater Density"):
-            sal = 35.0 - (pred_3d[:, :, lon_idx] - 10.0) * 0.08
-            slice_data = calc_density(pred_3d[:, :, lon_idx], sal)
-        else:
-            slice_data = pred_3d[:, :, lon_idx]
-
-        masked_slice = np.where(mask_1d[None, :], slice_data, np.nan)
-        return {
-            "axis_label": "Latitude (°N)",
-            "coords": lats,
-            "depths": DEPTHS,
-            "values": masked_slice,
-            "fixed_label": f"Longitude: {actual_lon:.2f}°E",
-            "fixed_value": actual_lon,
-            "unit": "m/s" if "Sound" in variable else "PSU" if "Salinity" in variable else "kg/m³" if "Density" in variable else "°C",
-        }
+    Reuse field calculations so salinity, derived diagnostics, confidence and
+    embeddings cannot silently change meaning between the two views.
+    """
+    if axis not in ("lat", "lon") or not np.isfinite(coord_value):
+        raise ValueError("A finite coordinate and axis 'lat' or 'lon' are required.")
+    fixed_coords = COMMON_LATS if axis == "lat" else COMMON_LONS
+    index = int(np.argmin(np.abs(fixed_coords - coord_value)))
+    slices = []
+    unit = ""
+    for layer in DEPTHS:
+        grid = field(0.0, 0.0, int(layer), variable, analysis_date)
+        values = grid["value"].to_numpy().reshape(len(COMMON_LATS), len(COMMON_LONS))
+        slices.append(values[index, :] if axis == "lat" else values[:, index])
+        unit = str(grid["unit"].iat[0])
+    fixed_value = float(fixed_coords[index])
+    return {
+        "axis_label": "Longitude (°E)" if axis == "lat" else "Latitude (°N)",
+        "coords": COMMON_LONS if axis == "lat" else COMMON_LATS,
+        "depths": DEPTHS,
+        "values": np.stack(slices),
+        "fixed_label": f"Latitude: {fixed_value:.2f}°N" if axis == "lat" else f"Longitude: {fixed_value:.2f}°E",
+        "fixed_value": fixed_value,
+        "unit": unit,
+    }

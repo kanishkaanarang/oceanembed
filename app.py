@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.ui.mission_panel import render_mission_intelligence, multi_variable_figure
+from src.ui.theme import themed_table, render_chart
 from src.models.mission_metrics import export_profile_to_netcdf
 
 from backend import (
@@ -46,6 +48,20 @@ st.set_page_config(
 st.html(
     """
     <style>
+    [data-testid="stMainBlockContainer"] { padding-top: 4rem; padding-bottom: 2rem; }
+    [data-testid="stSidebarUserContent"] { padding-top: 0; }
+    [data-testid="stSidebar"] hr { margin: .5rem 0; }
+    .st-key-workspace_page label { border-radius: 8px; padding: 5px 8px; margin: 0; }
+    .st-key-workspace_page label:has(input:checked) { background: rgba(2,132,199,.12); }
+    [data-testid="stMetricValue"] { font-size: clamp(1.35rem, 2vw, 1.85rem); }
+    [data-testid="stMetricValue"] > div, [data-testid="stMetricLabel"] p {
+      white-space: normal !important; overflow: visible !important; text-overflow: clip !important;
+    }
+    [data-testid="stMainBlockContainer"] h3 { font-size: 1.35rem; line-height: 1.4; }
+    @media (max-width: 700px) {
+      [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
+      .st-key-hero { padding: 1rem !important; }
+    }
     @media (prefers-reduced-motion: no-preference) {
       @keyframes oceanembed-rise {
         from { opacity: 0; transform: translateY(14px); }
@@ -145,6 +161,7 @@ COASTAL_LANDMARKS = [
 
 def initialize_state() -> None:
     defaults = {
+        "workspace_page": "Overview",
         "dark_mode": False,  # Default to Light theme!
         "analysis_date": date(2023, 3, 1),
         "latitude": 14.5,
@@ -164,6 +181,17 @@ def initialize_state() -> None:
 
 
 initialize_state()
+# Keep optional widget values when their page is not mounted.
+for state_key in ("mission-svp-preview", "mission-ray-preview", "explore_view_mode", "transect_axis_choice",
+                  "comparison_date", "comparison_latitude", "comparison_longitude"):
+    if state_key in st.session_state:
+        st.session_state[state_key] = st.session_state[state_key]
+
+PAGES = ("Overview", "Ocean Explorer", "Profiles & Data", "Mission Intelligence", "Validation", "About & Saved Places")
+
+def navigate_to(destination):
+    st.session_state.workspace_page = destination
+
 is_dark = st.session_state.get("dark_mode", False)
 if is_dark:
     st.html(
@@ -177,6 +205,42 @@ if is_dark:
           background-color: #0c2433 !important;
           color: #e7f4f8 !important;
           border-right: 1px solid #1a425a !important;
+        }
+        [data-testid="stWidgetLabel"] p,
+        [data-testid="stRadio"] label p,
+        [data-testid="stCheckbox"] label p {
+          color: #e7f4f8 !important;
+        }
+        [data-testid="stTooltipIcon"] svg { fill: #94a3b8 !important; }
+        .stMarkdownBadge, [data-testid="stMetricDelta"] {
+          color: #e7f4f8 !important;
+        }
+        [data-testid="stMarkdownContainer"] code {
+          color: #a5f3fc !important;
+          background-color: #113348 !important;
+        }
+        [data-testid="stSelectbox"] input,
+        [data-testid="stSelectbox"] div:has(> input[role="combobox"]),
+        [data-testid="stSelectboxVirtualDropdown"],
+        [role="listbox"], [role="option"] {
+          background-color: #113348 !important;
+          color: #e7f4f8 !important;
+          border-color: #356077 !important;
+        }
+        [role="option"][aria-selected="true"], [role="option"][data-focused="true"] {
+          background-color: #1a4b65 !important;
+        }
+        [data-testid="stSelectbox"] button {
+          color: #e7f4f8 !important;
+          background: #113348 !important;
+        }
+        [data-testid="stSidebarCollapseButton"] button { color: #bce9fc !important; }
+        [data-testid="stAlert"] p { color: #bce9fc !important; }
+        [data-testid="stButton"] button,
+        [data-testid="stDownloadButton"] button {
+          background: #113348 !important;
+          border-color: #356077 !important;
+          color: #e7f4f8 !important;
         }
         [data-testid="stHeader"] {
           background-color: rgba(7, 27, 42, 0.85) !important;
@@ -415,6 +479,9 @@ def plot_colors() -> dict[str, str]:
         "grid": "#1a425a" if is_dark else "#f1f5f9",
         "model": "#00d2ff" if is_dark else "#0284c7",
         "reference": "#ff9e00" if is_dark else "#d97706",
+        "temperature": "#fdba74" if is_dark else "#c2410c",
+        "salinity": "#5eead4" if is_dark else "#047857",
+        "acoustic": "#7dd3fc" if is_dark else "#0369a1",
     }
 
 
@@ -447,6 +514,18 @@ def map_figure(grid: pd.DataFrame, latitude: float, longitude: float, variable: 
         colorbar=dict(title=unit, thickness=14, len=0.82, tickfont=dict(color=colors["text"])),
         hovertemplate=f"Longitude %{{x:.2f}}°E<br>Latitude %{{y:.2f}}°N<br>{variable}: %{{z:.2f}} {unit}<extra></extra>",
         connectgaps=False,
+    ))
+
+    # Heatmap cells do not emit Streamlit's Plotly point-selection events.
+    # A transparent scatter layer makes every valid ocean cell selectable.
+    selectable = grid.loc[np.isfinite(grid["value"])]
+    figure.add_trace(go.Scattergl(
+        x=selectable["longitude"], y=selectable["latitude"],
+        customdata=selectable["value"], mode="markers", name="Ocean cells",
+        marker=dict(size=7, color="rgba(2,132,199,0.01)"),
+        selected=dict(marker=dict(opacity=0.8, color=colors["model"])),
+        hovertemplate=f"Longitude %{{x:.2f}}°E<br>Latitude %{{y:.2f}}°N<br>{variable}: %{{customdata:.2f}} {unit}<extra></extra>",
+        showlegend=False,
     ))
 
     lats = [item[1] for item in COASTAL_LANDMARKS]
@@ -482,78 +561,47 @@ def map_figure(grid: pd.DataFrame, latitude: float, longitude: float, variable: 
         plot_bgcolor=colors["panel"],
         font=dict(color=colors["text"]),
         xaxis=dict(title="Longitude (°E)", range=LONGITUDE_RANGE, gridcolor=colors["grid"], zeroline=False),
-        yaxis=dict(title="Latitude (°N)", range=LATITUDE_RANGE, gridcolor=colors["grid"], zeroline=False, scaleanchor="x", scaleratio=1),
+        yaxis=dict(title="Latitude (°N)", range=LATITUDE_RANGE, gridcolor=colors["grid"], zeroline=False),
         showlegend=False,
+        clickmode="event+select",
     )
     return figure
 
 
 def profile_figure(profile: pd.DataFrame, variable: str, colors: dict[str, str], comparison_profile: pd.DataFrame | None = None) -> go.Figure:
-    if variable == "Confidence":
-        figure = go.Figure(go.Scatter(
-            x=profile["confidence_pct"],
-            y=profile["depth_m"],
-            mode="lines+markers",
-            name="Model confidence",
-            line=dict(color=colors["model"], width=3),
-            marker=dict(size=6),
-            hovertemplate="Depth: %{y}m<br>Confidence: %{x}%<extra></extra>",
-        ))
+    single_variables = {
+        "Confidence": ("confidence_pct", "Model confidence", "%"),
+        "Ground Truth": ("argo_temperature_c", "GLORYS temperature", "?C"),
+        "Residual": ("error_c", "Absolute temperature residual", "?C"),
+        "Density": ("density_kg_m3", "Seawater density", "kg/m?"),
+        "Sound Speed": ("sound_speed_m_s", "Sound speed", "m/s"),
+    }
+    if variable in single_variables:
+        column, title, unit = single_variables[variable]
+        figure = go.Figure()
+        for frame, label, color, dash in [
+            (profile, title, colors["model"], "solid"),
+            (comparison_profile, "Comparison sounding", colors["reference"], "dash"),
+        ]:
+            if frame is not None:
+                figure.add_trace(go.Scatter(
+                    x=frame[column], y=frame["depth_m"], mode="lines+markers", name=label,
+                    line=dict(color=color, width=3, dash=dash), marker=dict(size=5),
+                    hovertemplate=f"Depth: %{{y}} m<br>{title}: %{{x:.2f}} {unit}<extra></extra>",
+                ))
         figure.update_layout(
-            height=480,
-            margin=dict(l=5, r=5, t=20, b=5),
-            paper_bgcolor=colors["paper"],
-            plot_bgcolor=colors["panel"],
-            font=dict(color=colors["text"]),
-            xaxis=dict(title="Model Confidence (%)", range=[50, 100], gridcolor=colors["grid"]),
+            height=480, margin=dict(l=5, r=5, t=35, b=5),
+            paper_bgcolor=colors["paper"], plot_bgcolor=colors["panel"],
+            font=dict(color=colors["text"]), legend=dict(orientation="h", y=1.14, x=0),
+            xaxis=dict(title=f"{title} ({unit})", gridcolor=colors["grid"],
+                       range=[50, 100] if variable == "Confidence" else None),
             yaxis=dict(title="Depth (m)", autorange="reversed", gridcolor=colors["grid"]),
         )
         return figure
-
     if variable == "Salinity":
         estimate, lower, upper, reference, unit = "salinity_psu", "salinity_lower_psu", "salinity_upper_psu", "argo_salinity_psu", "PSU"
-    elif "Density" in variable:
-        figure = go.Figure(go.Scatter(
-            x=profile["density_kg_m3"],
-            y=profile["depth_m"],
-            mode="lines+markers",
-            name="Seawater Density (ρ)",
-            line=dict(color="#06d6a0", width=3),
-            marker=dict(size=6),
-            hovertemplate="Depth: %{y}m<br>Density: %{x:.2f} kg/m³<extra></extra>",
-        ))
-        figure.update_layout(
-            height=480,
-            margin=dict(l=5, r=5, t=20, b=5),
-            paper_bgcolor=colors["paper"],
-            plot_bgcolor=colors["panel"],
-            font=dict(color=colors["text"]),
-            xaxis=dict(title="Seawater Density (kg/m³)", gridcolor=colors["grid"]),
-            yaxis=dict(title="Depth (m)", autorange="reversed", gridcolor=colors["grid"]),
-        )
-        return figure
-    elif "Sound" in variable:
-        figure = go.Figure(go.Scatter(
-            x=profile["sound_speed_m_s"],
-            y=profile["depth_m"],
-            mode="lines+markers",
-            name="Speed of Sound (c)",
-            line=dict(color="#f72585", width=3),
-            marker=dict(size=6),
-            hovertemplate="Depth: %{y}m<br>Sound speed: %{x:.1f} m/s<extra></extra>",
-        ))
-        figure.update_layout(
-            height=480,
-            margin=dict(l=5, r=5, t=20, b=5),
-            paper_bgcolor=colors["paper"],
-            plot_bgcolor=colors["panel"],
-            font=dict(color=colors["text"]),
-            xaxis=dict(title="Sound Speed (m/s)", gridcolor=colors["grid"]),
-            yaxis=dict(title="Depth (m)", autorange="reversed", gridcolor=colors["grid"]),
-        )
-        return figure
     else:
-        estimate, lower, upper, reference, unit = "temperature_c", "temperature_lower_c", "temperature_upper_c", "argo_temperature_c", "°C"
+        estimate, lower, upper, reference, unit = "temperature_c", "temperature_lower_c", "temperature_upper_c", "argo_temperature_c", "?C"
 
     figure = go.Figure()
     figure.add_trace(go.Scatter(x=profile[upper], y=profile["depth_m"], mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False))
@@ -627,7 +675,7 @@ def transect_figure(transect_data: dict, variable: str, colors: dict[str, str]) 
         colorscale=scale,
         colorbar=dict(title=unit, thickness=14, len=0.82, tickfont=dict(color=colors["text"])),
         contours=dict(coloring="heatmap", showlabels=True, labelfont=dict(size=10, color=colors["text"])),
-        hovertemplate=f"{transect_data['axis_label']}: %{x:.2f}<br>Depth: %{y}m<br>{variable}: %{z:.2f} {unit}<extra></extra>",
+        hovertemplate=f"{transect_data['axis_label']}: %{{x:.2f}}<br>Depth: %{{y}}m<br>{variable}: %{{z:.2f}} {unit}<extra></extra>",
         connectgaps=False,
     ))
     fig.update_layout(
@@ -691,7 +739,7 @@ analysis_dates = list(pd.date_range(ANALYSIS_START, ANALYSIS_END, freq="D").date
 
 with st.sidebar:
     st.title("OceanEmbed", icon=":material/waves:")
-    st.caption("Deep Learning Subsurface Ocean Reconstruction")
+    st.caption("Subsurface ocean reconstruction")
     engine_obj = get_engine()
     dataset_label = "150-Day Reanalysis" if not engine_obj.is_compact else "Compact Reference Dataset"
     st.badge(f"PyTorch CNN · {dataset_label}", icon=":material/bolt:", color="green")
@@ -702,6 +750,8 @@ with st.sidebar:
         help="Switch between Light and Dark interface styles",
     )
 
+    st.radio("Workspace", PAGES, key="workspace_page")
+    st.divider()
     st.subheader("Regional Hotspots")
     all_presets_list = list(REGIONAL_PRESETS) + list(CYCLONE_EVENT_PRESETS)
     preset_names = {p["id"]: f"{p['name']} ({p.get('badge', 'Mission')})" for p in all_presets_list}
@@ -735,12 +785,11 @@ with st.sidebar:
     st.slider("Latitude", *LATITUDE_RANGE, step=0.25, format="%.2f° N", key="latitude", on_change=on_coordinate_change)
     st.slider("Longitude", *LONGITUDE_RANGE, step=0.25, format="%.2f° E", key="longitude", on_change=on_coordinate_change)
     st.select_slider("Depth slice", options=list(map(int, DEPTHS)), format_func=lambda item: f"{item} m", key="depth", on_change=record_interaction)
-    st.segmented_control(
+    st.selectbox(
         "Map layer",
         ["Temperature", "Ground Truth", "Residual", "Salinity", "Density", "Sound Speed", "Embedding", "Confidence"],
         key="variable",
         on_change=record_interaction,
-        wrap=True,
     )
 
     st.toggle("Compare second point", key="comparison_enabled", on_change=record_interaction)
@@ -752,23 +801,12 @@ with st.sidebar:
 
     st.button("Save current location", icon=":material/bookmark_add:", width="stretch", on_click=save_current_location, key="save-location")
 
-    with st.expander("Live Model & Data Proof", icon=":material/verified_user:"):
-        dataset_name = "Full 150-Day Satellite Observation Arrays (0.25° Grid)" if not engine_obj.is_compact else "Compact Reference Arrays (0.25° Grid)"
-        st.markdown(
-            f"""
-            - **Current Model**: OceanEmbedNet v3 (Multi-Task SE-ResNet)
-            - **Held-Out Test Temp RMSE**: **0.271 °C** (92.5% error reduction vs Climatology 3.60 °C)
-            - **Held-Out Test Sal RMSE**: **0.103 PSU** (High-precision halocline recovery)
-            - **Physics Enforcement**: EOS-80 Hydrostatic Stability ($N^2 \\ge 0$)
-            - **Architecture**: Shared 128-dim Latent + Dual Conv1d Heads (Temp & Salinity)
-            - **Weights**: `oceanembed_v3_qc_full/best.pt` (Loaded)
-            - **Dataset**: {dataset_name} (71,380 QC-verified profiles)
-            - **Grid**: 0.25° horizontal (24,000 nodes, 15 depth tiers)
-            - **Inference Latency**: ~12ms CPU
-            """
-        )
-        if engine_obj.is_compact:
-            st.info("💡 **Full Dataset Notice**: Running on embedded compact dataset. For full 150-day satellite historical arrays (250MB), place `training_arrays_v2_normalized.npz` in `training_arrays_v2_normalized/` or `data/processed/`.")
+    with st.expander("Loaded model & data", icon=":material/verified_user:"):
+        st.write("**Serving model:** OceanEmbedNet v2 · 7-channel CNN")
+        st.caption(f"Weights: {Path(engine_obj.model_path).name if engine_obj.model_loaded else 'Not loaded'}")
+        st.caption(f"Data mode: {engine_obj.dataset_mode}")
+        st.caption("The separate v3 experiment and its test scope are documented on Validation.")
+
 
 
 analysis_date = st.session_state.analysis_date
@@ -780,8 +818,8 @@ colors = plot_colors()
 
 surface = get_surface_conditions(latitude, longitude, analysis_date)
 profile = reconstruct(latitude, longitude, analysis_date)
-grid = field(latitude, longitude, depth, variable, analysis_date)
-observations = nearby_observations(latitude, longitude, analysis_date)
+grid = field(latitude, longitude, depth, variable, analysis_date) if st.session_state.workspace_page == "Ocean Explorer" else None
+observations = nearby_observations(latitude, longitude, analysis_date) if st.session_state.workspace_page == "Profiles & Data" else None
 validation = validation_summary()
 
 comparison_profile = None
@@ -796,47 +834,12 @@ narrative = generate_profile_interpretation(profile, surface, latitude, longitud
 # Locate current depth row
 depth_row = profile.loc[profile["depth_m"] == depth].iloc[0] if (profile["depth_m"] == depth).any() else profile.iloc[0]
 
-with st.container(key="hero"):
-    hero_copy, hero_status = st.columns([1.7, 0.7], gap="large", vertical_alignment="center")
-    with hero_copy:
-        st.badge("STATE-OF-THE-ART V3 INFERENCE ACTIVE", icon=":material/smart_toy:", color="green")
-        st.title("Make the ocean below the surface visible.", icon=":material/travel_explore:")
-        st.write("Real-time 3D vertical ocean temperature, salinity, and acoustic state reconstruction powered by **OceanEmbedNet v3** (Dual-Head SE-ResNet + EOS-80 Physics Loss). Inverting satellite remote sensing parameters into subsurface depth layers across the North Indian Ocean basin with **0.271°C Temperature RMSE (92.5% gain over climatology)** and **0.103 PSU Salinity RMSE**.")
-    with hero_status:
-        with st.container(border=True, key="hero-status"):
-            st.caption("CURRENT WATER COLUMN")
-            st.metric("Selected depth", f"{depth} m", border=False)
-            st.caption(f"{latitude:.2f}°N · {longitude:.2f}°E")
-            st.caption(f"{analysis_date:%d %b %Y}")
-    with st.container(horizontal=True, key="hero-meta"):
-        st.badge("North Indian Ocean", icon=":material/location_on:", color="blue")
-        st.badge("RMSE: 0.271°C (-92.5%)", icon=":material/verified:", color="green")
-        st.badge("Salinity: 0.103 PSU", icon=":material/water_drop:", color="teal")
-        st.badge("150-day satellite dataset", icon=":material/calendar_month:", color="violet")
-        st.badge("0.25° resolution", icon=":material/grid_on:", color="orange")
-        st.badge("CPU reconstruction", icon=":material/speed:", color="blue")
-        st.badge("Telemetry: ~10 KB payload", icon=":material/cloud_download:", color="green")
-    st.caption("OceanEmbedNet v3 · Dual-Head SE-ResNet · EOS-80 Physics · SIH26066 · Edge Shipboard Deployable")
-    
-    with st.container(key="preset-pills"):
-        st.caption("TACTICAL & OCEANOGRAPHIC MISSION PRESETS (1-CLICK LOAD)")
-        p_cols = st.columns(4, gap="small")
-        for i, cp in enumerate(CYCLONE_EVENT_PRESETS):
-            with p_cols[i]:
-                st.button(
-                    cp["name"],
-                    key=f"btn_p_{cp['id']}",
-                    width="stretch",
-                    on_click=apply_preset,
-                    args=(cp["id"],),
-                )
-
 mission_context = {
     "date": analysis_date.isoformat(),
     "requested_location": {"latitude": latitude, "longitude": longitude},
     "sampled_location": {"latitude": surface["latitude"], "longitude": surface["longitude"]},
     "dataset_mode": engine_obj.dataset_mode,
-    "model": "OceanEmbedNet v3 (SE-ResNet PINN)" if engine_obj.model_loaded else "Untrained model fallback",
+    "model": "OceanEmbedNet v2 CNN" if engine_obj.model_loaded else "Untrained model fallback",
 }
 comparison_context = None
 if comparison_surface is not None:
@@ -849,88 +852,64 @@ if comparison_surface is not None:
     }
 if surface["latitude"] != latitude or surface["longitude"] != longitude:
     st.caption(f"Sampled ocean cell: {surface['latitude']:.2f}°N, {surface['longitude']:.2f}°E. Coordinates are snapped to the available ocean grid.")
-render_mission_intelligence(profile, colors, mission_context, comparison_profile, comparison_context)
-st.divider()
 
-st.subheader(f"Water column state at selected depth ({depth} m)", icon=":material/layers:")
-with st.container(horizontal=True, key="depth-cards"):
-    st.metric(
-        f"Temperature ({depth}m)",
-        f"{depth_row['temperature_c']:.2f} °C",
-        f"{depth_row['temperature_c'] - depth_row['argo_temperature_c']:+.2f} °C vs GLORYS",
-        border=True,
-    )
-    st.metric(
-        f"GLORYS Ground Truth",
-        f"{depth_row['argo_temperature_c']:.2f} °C",
-        f"Residual: {depth_row['error_c']:.2f} °C",
-        border=True,
-    )
-    st.metric(
-        f"Salinity ({depth}m)",
-        f"{depth_row['salinity_psu']:.3f} PSU",
-        f"Surface SSS: {surface['sss']:.1f}",
-        border=True,
-    )
-    st.metric(
-        f"Seawater Density (ρ)",
-        f"{depth_row['density_kg_m3']:.2f} kg/m³",
-        f"σ_θ: {depth_row['density_kg_m3'] - 1000:.2f}",
-        border=True,
-    )
-    st.metric(
-        f"Sound Speed (c)",
-        f"{depth_row['sound_speed_m_s']:.1f} m/s",
-        "Mackenzie eqn",
-        border=True,
-    )
-    st.metric(
-        f"Model Confidence",
-        f"{depth_row['confidence_pct']}%",
-        f"Uncertainty: ±{depth_row['uncertainty_c']:.2f} °C",
-        border=True,
-    )
 
-st.subheader("Driving surface satellite observations", icon=":material/satellite_alt:")
-with st.container(horizontal=True, key="surface-cards"):
-    st.metric("SST (Surface Temp)", f"{surface['sst']:.2f} °C", "Satellite Infrared", border=True)
-    st.metric("SSS (Surface Salinity)", f"{surface['sss']:.2f} PSU", "Microwave Radiometer", border=True)
-    st.metric("SLA (Sea Level Anomaly)", f"{surface['sla']:+.3f} m", "Altimetry (SSH)", border=True)
-    st.metric("Surface Wind Vector", f"{surface['wind_speed']:.1f} m/s", f"From {surface['wind_direction']}", border=True)
-    st.metric("Surface Geostrophic Drift", f"{surface['current_speed']:.2f} m/s", f"Towards {surface['current_direction']}", border=True)
+def render_overview():
+    with st.container(key="hero"):
+        hero_copy, hero_status = st.columns([1.7, 0.7], gap="large", vertical_alignment="center")
+        with hero_copy:
+            st.badge("SUBSURFACE OCEAN EXPLORER", icon=":material/smart_toy:", color="green")
+            st.title("Make the ocean below the surface visible.", icon=":material/travel_explore:")
+            st.write("Explore the North Indian Ocean from the surface to 1,000 m. Choose a location, reconstruct its water column, and inspect the patterns below the surface.")
+        with hero_status:
+            with st.container(border=True, key="hero-status"):
+                st.caption("CURRENT WATER COLUMN")
+                st.metric("Selected depth", f"{depth} m", border=False)
+                st.caption(f"{latitude:.2f}°N · {longitude:.2f}°E")
+                st.caption(f"{analysis_date:%d %b %Y}")
+        with st.container(horizontal=True, key="hero-meta"):
+            st.badge("North Indian Ocean", icon=":material/location_on:", color="blue")
+            st.badge("15 depth layers", icon=":material/layers:", color="green")
+            st.badge("0.25° grid", icon=":material/grid_on:", color="orange")
+        st.caption("OceanEmbed · SIH26066 · Satellite-to-subsurface reconstruction")
 
-if comparison_profile is not None and comparison_surface is not None:
-    comp_row = comparison_profile.loc[comparison_profile["depth_m"] == depth].iloc[0]
-    st.subheader(f"Dual-Point Comparison at {depth} m ({st.session_state.comparison_latitude:.2f}°N, {st.session_state.comparison_longitude:.2f}°E)", icon=":material/compare_arrows:")
-    with st.container(horizontal=True, key="comparison-cards"):
-        st.metric(
-            f"Δ Temperature ({depth}m)",
-            f"{depth_row['temperature_c'] - comp_row['temperature_c']:+.2f} °C",
-            f"Compare: {comp_row['temperature_c']:.2f} °C",
-            border=True,
-        )
-        st.metric(
-            f"Δ Salinity ({depth}m)",
-            f"{depth_row['salinity_psu'] - comp_row['salinity_psu']:+.3f} PSU",
-            f"Compare: {comp_row['salinity_psu']:.3f} PSU",
-            border=True,
-        )
-        st.metric(
-            f"Δ Density",
-            f"{depth_row['density_kg_m3'] - comp_row['density_kg_m3']:+.2f} kg/m³",
-            f"Compare: {comp_row['density_kg_m3']:.2f}",
-            border=True,
-        )
-        st.metric(
-            f"Δ Sound Speed",
-            f"{depth_row['sound_speed_m_s'] - comp_row['sound_speed_m_s']:+.1f} m/s",
-            f"Compare: {comp_row['sound_speed_m_s']:.1f}",
-            border=True,
-        )
+        with st.container(key="preset-pills"):
+            st.caption("START WITH A REGIONAL SCENARIO")
+            p_cols = st.columns(4, gap="small")
+            for i, cp in enumerate(CYCLONE_EVENT_PRESETS):
+                with p_cols[i % len(p_cols)]:
+                    st.button(
+                        cp["name"].split(" (")[0].replace("Ganga-Brahmaputra Plume", "River plume").replace("Southwest Upwelling Zone", "Upwelling"),
+                        help=cp["name"],
+                        key=f"btn_p_{cp['id']}",
+                        width="stretch",
+                        on_click=apply_preset,
+                        args=(cp["id"],),
+                    )
 
-explore_tab, profile_tab, quality_tab, data_tab = st.tabs(["Explore & Map", "Sounding Soundings & Table", "Model Validation & Quality", "Technical Specifications"])
 
-with explore_tab:
+    st.subheader("Your selected water column")
+    with st.container(horizontal=True, key="metrics"):
+        st.metric("Surface temperature", f"{surface['sst']:.2f} °C", border=True)
+        st.metric(f"Temperature at {depth} m", f"{depth_row['temperature_c']:.2f} °C", border=True)
+        st.metric("Depth layers", str(len(profile)), border=True)
+    st.subheader("Choose your next step")
+    destinations = [
+        ("Ocean Explorer", "Explore maps & transects", "Compare basin-wide fields with a vertical water column."),
+        ("Profiles & Data", "Inspect & export a profile", "Review every depth, nearby observations, and CSV / NetCDF exports."),
+        ("Mission Intelligence", "Open mission diagnostics", "Inspect heat potential and acoustic profile diagnostics."),
+    ]
+    for column, (destination, title, description) in zip(st.columns(3), destinations):
+        with column, st.container(border=True):
+            st.markdown(f"**{title}**")
+            st.caption(description)
+            st.button("Open " + destination, key="open-" + destination, on_click=navigate_to, args=(destination,), width="stretch")
+    with st.expander("Water-column interpretation", expanded=False):
+        st.markdown(narrative)
+    st.caption("Suggested showcase: Overview → Ocean Explorer → Profiles & Data → Mission Intelligence → Validation.")
+
+
+def render_explore():
     view_mode = st.radio(
         "Exploration View",
         ["Horizontal Map (Depth Slice)", "Vertical Transect Curtain (0–1000m)"],
@@ -943,7 +922,7 @@ with explore_tab:
         with map_col:
             with st.container(border=True, key="map-card"):
                 st.subheader(f"{variable} field at {depth} m depth", icon=":material/map:")
-                st.plotly_chart(
+                render_chart(
                     map_figure(grid, latitude, longitude, variable, colors),
                     width="stretch",
                     key="map_selection",
@@ -954,34 +933,37 @@ with explore_tab:
                 st.caption("Click any point on the map to relocate the target sounding coordinates.")
         with profile_col:
             with st.container(border=True, key="profile-card"):
-                st.subheader(f"Vertical {variable.lower()} profile", icon=":material/show_chart:")
-                st.plotly_chart(profile_figure(profile, variable, colors, comparison_profile), width="stretch", config={"displayModeBar": False})
+                profile_variable = "Temperature" if variable == "Embedding" else variable
+                st.subheader(f"Vertical {profile_variable.lower()} profile", icon=":material/show_chart:")
+                if variable == "Embedding":
+                    st.caption("Embedding is a shared spatial representation, not a depth-resolved variable. The sounding shows its reconstructed temperature column.")
+                render_chart(profile_figure(profile, profile_variable, colors, comparison_profile), width="stretch", config={"displayModeBar": False})
     else:
         transect_col, t_meta_col = st.columns([1.5, 1], gap="large")
         with transect_col:
             with st.container(border=True, key="transect-card"):
-                st.subheader(f"Vertical Basin Transect Curtain ({variable})", icon=":material/view_column:")
+                st.subheader(f"{variable} basin transect", icon=":material/view_column:")
                 axis_choice = st.radio("Slice Plane", ["Zonal Transect (East-West along Latitude)", "Meridional Transect (North-South along Longitude)"], horizontal=True, key="transect_axis_choice")
                 axis_key = "lat" if "Zonal" in axis_choice else "lon"
                 coord_val = latitude if axis_key == "lat" else longitude
                 t_data = transect(coord_val, axis=axis_key, variable=variable, analysis_date=analysis_date)
-                st.plotly_chart(transect_figure(t_data, variable, colors), width="stretch", config={"displayModeBar": False})
+                render_chart(transect_figure(t_data, variable, colors), width="stretch", config={"displayModeBar": False})
                 st.caption(f"2D Basin Cross-Section along {t_data['fixed_label']}. Reveals subsurface isotherm slopes, thermocline depth variations, and water mass boundaries down to 1000m.")
         with t_meta_col:
             with st.container(border=True, key="transect-meta-card"):
                 st.subheader("Transect Intelligence", icon=":material/analytics:")
-                st.metric("Slice Orientation", "East-West (Zonal)" if axis_key == "lat" else "North-South (Meridional)")
-                st.metric("Fixed Coordinate", t_data["fixed_label"])
-                st.metric("Depth Coverage", "0 m to 1000 m (15 tiers)")
-                st.info("💡 **Tactical & Oceanographic Insight**: Horizontal satellite SST cannot reveal subsurface tilting of the thermocline. OceanEmbedNet's 3D reconstruction exposes internal wave activity, eddy cold-core upwelling, and acoustic refraction ducts across entire oceanic basins.")
+                st.metric("Slice orientation", "East–West" if axis_key == "lat" else "North–South")
+                st.metric("Fixed latitude" if axis_key == "lat" else "Fixed longitude", f"{t_data['fixed_value']:.2f}°")
+                st.metric("Depth coverage", "0–1,000 m")
+                st.info("Read the curtain from the surface downward. Changes in the contours show reconstructed vertical gradients across the selected basin slice.")
 
     with st.container(border=True, key="summary-card"):
         st.markdown(narrative)
 
-    with st.expander(f"Inspect exact numeric values across all 15 depths (Depth {depth} m selected)", expanded=True):
+    with st.expander(f"Inspect exact numeric values across all 15 depths (Depth {depth} m selected)", expanded=False):
         quick_table = profile[["depth_m", "temperature_c", "argo_temperature_c", "error_c", "salinity_psu", "density_kg_m3", "sound_speed_m_s", "confidence_pct", "uncertainty_c"]].copy()
         st.dataframe(
-            quick_table,
+            themed_table(quick_table, is_dark),
             hide_index=True,
             width="stretch",
             column_config={
@@ -1006,6 +988,7 @@ with explore_tab:
             mime="text/csv",
             icon=":material/download:",
             key="grid-download",
+            on_click="ignore",
         )
     with export_col2:
         st.download_button(
@@ -1015,18 +998,102 @@ with explore_tab:
             mime="application/x-netcdf",
             icon=":material/download:",
             key="explore-netcdf-download",
+            on_click="ignore",
         )
     with note_col:
-        st.caption("All displayed soundings are generated by live PyTorch CNN inference from real 7-channel satellite observation grids.")
+        st.caption("Temperature uses the loaded CNN. Salinity and derived fields are diagnostic estimates; confidence is a heuristic, not a calibrated probability.")
 
-with profile_tab:
-    table_col, cast_col = st.columns([1.35, 1], gap="large")
+
+def render_profile():
+    st.subheader(f"Water column state at selected depth ({depth} m)", icon=":material/layers:")
+    with st.container(key="depth-cards"):
+        depth_metric_columns = st.columns(3)
+        depth_metric_columns[0].metric(
+            f"Temperature ({depth}m)",
+            f"{depth_row['temperature_c']:.2f} °C",
+            f"{depth_row['temperature_c'] - depth_row['argo_temperature_c']:+.2f} °C vs GLORYS",
+            border=True,
+        )
+        depth_metric_columns[1].metric(
+            f"GLORYS Ground Truth",
+            f"{depth_row['argo_temperature_c']:.2f} °C",
+            f"Residual: {depth_row['error_c']:.2f} °C",
+            border=True,
+        )
+        depth_metric_columns[2].metric(
+            f"Salinity ({depth}m)",
+            f"{depth_row['salinity_psu']:.3f} PSU",
+            f"Surface SSS: {surface['sss']:.1f}",
+            border=True,
+        )
+        depth_metric_columns[0].metric(
+            f"Seawater Density (ρ)",
+            f"{depth_row['density_kg_m3']:.2f} kg/m³",
+            f"σ_θ: {depth_row['density_kg_m3'] - 1000:.2f}",
+            border=True,
+        )
+        depth_metric_columns[1].metric(
+            f"Sound Speed (c)",
+            f"{depth_row['sound_speed_m_s']:.1f} m/s",
+            "Mackenzie eqn",
+            border=True,
+        )
+        depth_metric_columns[2].metric(
+            f"Model Confidence",
+            f"{depth_row['confidence_pct']}%",
+            f"Uncertainty: ±{depth_row['uncertainty_c']:.2f} °C",
+            border=True,
+        )
+
+    with st.expander("Surface observations & forcing", expanded=False):
+        st.subheader("Surface input fields", icon=":material/satellite_alt:")
+        with st.container(horizontal=True, key="surface-cards"):
+            st.metric("SST (Surface Temp)", f"{surface['sst']:.2f} °C", "Surface temperature input", border=True)
+            st.metric("SSS (Surface Salinity)", f"{surface['sss']:.2f} PSU", "Surface salinity input", border=True)
+            st.metric("SLA (Sea Level Anomaly)", f"{surface['sla']:+.3f} m", "Altimetry (SSH)", border=True)
+            st.metric("Surface Wind Vector", f"{surface['wind_speed']:.1f} m/s", f"From {surface['wind_direction']}", border=True)
+            st.metric("Surface Geostrophic Drift", f"{surface['current_speed']:.2f} m/s", f"Towards {surface['current_direction']}", border=True)
+
+    if comparison_profile is not None and comparison_surface is not None:
+        comp_row = comparison_profile.loc[comparison_profile["depth_m"] == depth].iloc[0]
+        st.subheader(f"Dual-Point Comparison at {depth} m ({st.session_state.comparison_latitude:.2f}°N, {st.session_state.comparison_longitude:.2f}°E)", icon=":material/compare_arrows:")
+        with st.container(horizontal=True, key="comparison-cards"):
+            st.metric(
+                f"Δ Temperature ({depth}m)",
+                f"{depth_row['temperature_c'] - comp_row['temperature_c']:+.2f} °C",
+                f"Compare: {comp_row['temperature_c']:.2f} °C",
+                border=True,
+            )
+            st.metric(
+                f"Δ Salinity ({depth}m)",
+                f"{depth_row['salinity_psu'] - comp_row['salinity_psu']:+.3f} PSU",
+                f"Compare: {comp_row['salinity_psu']:.3f} PSU",
+                border=True,
+            )
+            st.metric(
+                f"Δ Density",
+                f"{depth_row['density_kg_m3'] - comp_row['density_kg_m3']:+.2f} kg/m³",
+                f"Compare: {comp_row['density_kg_m3']:.2f}",
+                border=True,
+            )
+            st.metric(
+                f"Δ Sound Speed",
+                f"{depth_row['sound_speed_m_s'] - comp_row['sound_speed_m_s']:+.1f} m/s",
+                f"Compare: {comp_row['sound_speed_m_s']:.1f}",
+                border=True,
+            )
+
+
+    table_col = st.container()
+    cast_col = st.expander("Nearby reference casts", expanded=False)
     with table_col:
         with st.container(border=True, key="depth-table-card"):
             st.subheader("Comprehensive Vertical Hydrographic Sounding", icon=":material/table_chart:")
-            full_display = profile.copy()
+            leading_columns = ["depth_m", "temperature_c", "salinity_psu", "density_kg_m3",
+                               "sound_speed_m_s", "argo_temperature_c", "error_c"]
+            full_display = profile[leading_columns + [name for name in profile.columns if name not in leading_columns]].copy()
             st.dataframe(
-                full_display,
+                themed_table(full_display, is_dark),
                 hide_index=True,
                 height=450,
                 column_config={
@@ -1050,6 +1117,7 @@ with profile_tab:
                     mime="text/csv",
                     icon=":material/download:",
                     key="profile-download",
+                    on_click="ignore",
                 )
             with dl_col2:
                 st.download_button(
@@ -1059,12 +1127,14 @@ with profile_tab:
                     mime="application/x-netcdf",
                     icon=":material/download:",
                     key="profile-netcdf-download",
+                    on_click="ignore",
                 )
     with cast_col:
         with st.container(border=True, key="casts-card"):
-            st.subheader("Regional Argo float observations", icon=":material/sensors:")
+            st.subheader("Regional reference casts", icon=":material/sensors:")
+            st.caption("Illustrative nearby float records for the demonstration; not a live Argo feed.")
             st.dataframe(
-                observations,
+                themed_table(observations, is_dark),
                 hide_index=True,
                 height=450,
                 column_config={
@@ -1078,20 +1148,35 @@ with profile_tab:
             )
 
     with st.expander("Multi-Variable Hydrographic Sounding (T-S-c Overlay)", expanded=False, icon=":material/stacked_line_chart:"):
-        st.plotly_chart(multi_variable_figure(profile, colors), width="stretch", key="profile-multi-var-chart")
+        render_chart(multi_variable_figure(profile, colors), width="stretch", key="profile-multi-var-chart")
         st.caption("Synchronized vertical soundings of reconstructed Temperature (°C), Salinity (PSU), and Mackenzie (1981) Sound Speed (m/s) across the 0–1000m column.")
 
-with quality_tab:
+
+def render_quality():
+
+    with st.container(border=True):
+        st.subheader("V3 research experiment")
+        report_path = Path(__file__).resolve().parent / "results/oceanembed_v3_qc_full/metrics.json"
+        if report_path.exists():
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            col_t, col_s = st.columns(2)
+            col_t.metric("V3 test temperature RMSE", f"{report['test']['temperature']['rmse']:.3f} °C")
+            col_s.metric("V3 test salinity RMSE", f"{report['test']['salinity']['rmse']:.3f} PSU")
+            st.caption("Separate candidate model: five GLORYS days, held-out day 5, supported columns through 900 m. These are not the live map model's scores or independent satellite-to-Argo validation.")
+            st.download_button("Download v3 evaluation (JSON)", report_path.read_bytes(), "oceanembed_v3_evaluation.json", "application/json", key="v3-evaluation-download", on_click="ignore")
+        else:
+            st.info("Train the v3 candidate to generate its evaluation report.")
+    st.subheader("Serving CNN evaluation")
     chart_col, details_col = st.columns([1.2, 1], gap="large")
     with chart_col:
         with st.container(border=True, key="validation-card"):
             st.subheader("Depth-wise model validation error", icon=":material/verified:")
-            st.plotly_chart(validation_figure(depth_metrics, colors), width="stretch", config={"displayModeBar": False})
+            render_chart(validation_figure(depth_metrics, colors), width="stretch", config={"displayModeBar": False})
     with details_col:
         with st.container(border=True, key="quality-notes"):
             st.subheader("Per-depth performance benchmarks", icon=":material/analytics:")
             st.dataframe(
-                depth_metrics,
+                themed_table(depth_metrics, is_dark),
                 hide_index=True,
                 height=300,
                 column_config={
@@ -1123,7 +1208,8 @@ with quality_tab:
         if shap_img.exists():
             st.image(str(shap_img), caption="SHAP Summary: Importance of Surface Satellite Channels on Subsurface Inversion", width="stretch")
 
-with data_tab:
+
+def render_data():
     st.subheader("Model Architecture & Inversion Pipeline", icon=":material/memory:")
     st.markdown(
         """
@@ -1156,7 +1242,34 @@ with data_tab:
             st.subheader("Saved locations", icon=":material/bookmarks:")
             saved_locations = list_saved_locations()
             if not saved_locations.empty:
-                st.dataframe(saved_locations, hide_index=True)
+                st.dataframe(themed_table(saved_locations, is_dark), hide_index=True)
                 st.button("Clear saved locations", icon=":material/delete_sweep:", on_click=clear_locations)
             else:
                 st.caption("Save points from the sidebar to persist them locally in the SQLite store.")
+
+
+def render_mission():
+    render_mission_intelligence(profile, colors, mission_context, comparison_profile, comparison_context)
+
+
+page_renderers = {
+    "Overview": render_overview,
+    "Ocean Explorer": render_explore,
+    "Profiles & Data": render_profile,
+    "Mission Intelligence": render_mission,
+    "Validation": render_quality,
+    "About & Saved Places": render_data,
+}
+selected_page = st.session_state.workspace_page
+if selected_page != "Overview":
+    st.title(selected_page)
+    st.caption(f"{latitude:.2f}°N · {longitude:.2f}°E  |  {analysis_date:%d %b %Y}  |  {depth} m  |  {variable}")
+page_renderers[selected_page]()
+if st.session_state.get("_last_rendered_page") != selected_page:
+    st.session_state._last_rendered_page = selected_page
+    st.html("""<script>
+      requestAnimationFrame(() => {
+        document.querySelector('[data-testid="stMain"]')?.scrollTo({top: 0, behavior: 'instant'});
+        window.scrollTo(0, 0);
+      });
+    </script>""", unsafe_allow_javascript=True)

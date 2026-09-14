@@ -1,5 +1,38 @@
-"""One consistent theme for native Streamlit controls and dashboard panels."""
+"""Palette helpers for canvas-backed tables that do not inherit page CSS."""
+import pandas as pd
 import streamlit as st
+
+
+def themed_table(frame: pd.DataFrame, dark: bool):
+    """Style cell foreground/background without changing data or column formats.
+
+    Streamlit supports these pandas Styler properties in its interactive grid.
+    Native grid headers retain their own high-contrast header treatment.
+    """
+    return frame.style.format(precision=3, na_rep="—").set_properties(**{
+        "background-color": "#0c2433" if dark else "#ffffff",
+        "color": "#e7f4f8" if dark else "#0f172a",
+    })
+
+
+def render_chart(figure, **kwargs):
+    """Keep Plotly labels/hover text in sync with the sidebar theme toggle."""
+    dark = st.session_state.get("dark_mode", False)
+    text = "#e7f4f8" if dark else "#0f172a"
+    figure.update_layout(
+        template="plotly_dark" if dark else "plotly_white",
+        font_color=text, legend_font_color=text,
+        hoverlabel=dict(bgcolor="#113348" if dark else "#ffffff", font_color=text),
+    )
+    # Respect explicitly colored axes in the multivariable T-S-c plot.
+    for axis in list(figure.select_xaxes()) + list(figure.select_yaxes()):
+        if axis.tickfont.color is None:
+            axis.tickfont.color = text
+        if axis.title.font.color is None:
+            axis.title.font.color = text
+    # The native Streamlit theme does not follow a CSS sidebar toggle.
+    kwargs.setdefault("theme", None)
+    return st.plotly_chart(figure, **kwargs)
 
 
 def apply_dashboard_theme(dark: bool) -> None:

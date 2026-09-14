@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from src.ui.theme import render_chart
 
 from src.models.mission_metrics import (
     compute_acoustic_ray_paths,
@@ -129,23 +130,26 @@ def multi_variable_figure(profile: pd.DataFrame, colors: dict[str, str]) -> go.F
     s = ordered["salinity_psu"]
     c = ordered["sound_speed_m_s"]
 
+    temperature_color = colors.get("temperature", "#c2410c")
+    salinity_color = colors.get("salinity", "#047857")
+    acoustic_color = colors.get("acoustic", "#0369a1")
     figure = go.Figure()
     figure.add_trace(go.Scatter(
         x=t, y=z, mode="lines+markers", name="Temperature (°C)",
-        line=dict(color="#f97316", width=2.5),
+        line=dict(color=temperature_color, width=2.5),
         marker=dict(size=4),
         hovertemplate="Depth: %{y}m<br>Temp: %{x:.2f} °C<extra></extra>",
     ))
     figure.add_trace(go.Scatter(
         x=s, y=z, mode="lines+markers", name="Salinity (PSU)",
-        line=dict(color="#06d6a0", width=2.5, dash="dash"),
+        line=dict(color=salinity_color, width=2.5, dash="dash"),
         marker=dict(size=4),
         xaxis="x2",
         hovertemplate="Depth: %{y}m<br>Salinity: %{x:.3f} PSU<extra></extra>",
     ))
     figure.add_trace(go.Scatter(
         x=c, y=z, mode="lines+markers", name="Sound Speed (m/s)",
-        line=dict(color="#38bdf8", width=2.5, dash="dot"),
+        line=dict(color=acoustic_color, width=2.5, dash="dot"),
         marker=dict(size=4),
         xaxis="x3",
         hovertemplate="Depth: %{y}m<br>Sound Speed: %{x:.1f} m/s<extra></extra>",
@@ -158,27 +162,28 @@ def multi_variable_figure(profile: pd.DataFrame, colors: dict[str, str]) -> go.F
         plot_bgcolor=colors["panel"],
         font=dict(color=colors["text"], size=11),
         legend=dict(orientation="h", y=1.22, x=0),
-        yaxis=dict(title="Depth (m)", autorange="reversed", gridcolor=colors["grid"]),
+        yaxis=dict(title="Depth (m)", autorange="reversed", domain=[0.16, 0.94], gridcolor=colors["grid"]),
         xaxis=dict(
-            title=dict(text="Temperature (°C)", font=dict(color="#f97316")),
-            tickfont=dict(color="#f97316"),
+            title=dict(text="Temperature (°C)", font=dict(color=temperature_color)),
+            tickfont=dict(color=temperature_color),
             gridcolor=colors["grid"],
             zeroline=False,
             side="bottom",
         ),
         xaxis2=dict(
-            title=dict(text="Salinity (PSU)", font=dict(color="#06d6a0")),
-            tickfont=dict(color="#06d6a0"),
+            title=dict(text="Salinity (PSU)", font=dict(color=salinity_color)),
+            tickfont=dict(color=salinity_color),
             overlaying="x",
             side="top",
             showgrid=False,
         ),
         xaxis3=dict(
-            title=dict(text="Sound Speed (m/s)", font=dict(color="#38bdf8")),
-            tickfont=dict(color="#38bdf8"),
+            title=dict(text="Sound Speed (m/s)", font=dict(color=acoustic_color)),
+            tickfont=dict(color=acoustic_color),
             overlaying="x",
             side="bottom",
-            position=0.08,
+            anchor="free",
+            position=0,
             showgrid=False,
         ),
     )
@@ -202,9 +207,9 @@ def render_mission_intelligence(profile, colors, context, comparison=None, compa
     metrics = profile_metrics(profile)
     heat, acoustic, physics = metrics["cyclone"], metrics["acoustics"], metrics.get("physics")
     mhw, tactics = metrics.get("mhw"), metrics.get("tactics")
-    st.subheader("Mission intelligence")
     st.caption("METEOROLOGY, ACOUSTICS & OCEAN STRATIFICATION  /  Selected water column")
-    heat_col, acoustic_col, physics_col = st.columns(3, gap="medium")
+    heat_col, acoustic_col = st.columns(2, gap="medium")
+    physics_col = st.container()
     with heat_col, st.container(border=True, key="mission-cyclone-card"):
         st.caption("01 / CYCLONE ENERGY & THERMAL STRESS")
         st.subheader("Heat beneath the surface")
@@ -224,9 +229,9 @@ def render_mission_intelligence(profile, colors, context, comparison=None, compa
             d26 = f"> {heat['integrated_to_m']:.1f} m" if heat["d26_m"] is None else f"{heat['d26_m']:.1f} m"
             values[1].metric("26°C isotherm depth (D26)", d26)
             if mhw:
-                st.markdown(f"**Marine Heatwave**: :{mhw['badge_color']}[{mhw['category_label']}]")
+                st.badge(f"Marine heatwave: {mhw['category_label']}", color=mhw['badge_color'])
                 st.caption(f"Coral Bleaching: {mhw['bleaching_status']} (SST {mhw['sst_c']}°C, Anomaly {mhw['sst_anomaly_c']:+.2f}°C)")
-            st.html('<div class="oe-scale"><span style="border-color:#41b59a">LOW · &lt;50</span>'
+            st.html('<style>.oe-scale{display:flex;flex-wrap:wrap;gap:.75rem;font-size:.85rem}.oe-scale span{padding:.15rem .4rem;border-left:3px solid}</style><div class="oe-scale"><span style="border-color:#41b59a">LOW · &lt;50</span>'
                     '<span style="border-color:#e7a354">MODERATE · 50–80</span>'
                     '<span style="border-color:#e87575">HIGH · &gt;80 kJ/cm²</span></div>')
             if heat["is_lower_bound"]:
@@ -275,16 +280,16 @@ def render_mission_intelligence(profile, colors, context, comparison=None, compa
             st.caption("UNESCO EOS-80 density. In the Northern Bay of Bengal, fresh river runoff forms barrier layers that trap upper ocean heat.")
     with st.expander("Explore the heat reservoir", expanded=False, icon=":material/waves:"):
         if heat:
-            st.plotly_chart(heat_content_figure(profile, heat, colors, comparison), width="stretch", key="mission-heat-chart")
+            render_chart(heat_content_figure(profile, heat, colors, comparison), width="stretch", key="mission-heat-chart")
             st.caption("The amber area is temperature excess above 26°C, integrated from the surface to the first crossing. "
                        "The dashed vertical line marks 26°C.")
         else:
             st.info("A complete surface-connected temperature profile is needed for this chart.")
     if acoustic and st.checkbox("Show sound velocity profile preview", key="mission-svp-preview"):
-        st.plotly_chart(sound_profile_figure(profile, acoustic, colors, comparison), width="stretch", key="mission-svp-chart")
+        render_chart(sound_profile_figure(profile, acoustic, colors, comparison), width="stretch", key="mission-svp-chart")
         st.caption("The shaded band marks the strongest sampled cooling interval. This chart shows the profile, not simulated ray paths.")
     if acoustic and st.checkbox("Show Snell's Law acoustic ray refraction preview", key="mission-ray-preview"):
-        st.plotly_chart(acoustic_ray_figure(profile, colors), width="stretch", key="mission-ray-chart")
+        render_chart(acoustic_ray_figure(profile, colors), width="stretch", key="mission-ray-chart")
         st.caption("Snell's Law ray paths for a surface sonar transducer (15m depth). Downward-refracting rays illustrate the acoustic shadow zone blind cone beneath the thermocline.")
     with st.expander("Methodology & export", icon=":material/science:"):
         st.latex(r"\mathrm{TCHP}=\frac{1025\times3993}{10^7}\int_0^{D_{26}}[T(z)-26]\,dz\quad[\mathrm{kJ/cm^2}]")
@@ -296,14 +301,14 @@ def render_mission_intelligence(profile, colors, context, comparison=None, compa
             st.download_button("Download mission analysis (JSON)",
                                analysis_export(profile, metrics, context, comparison, comparison_context),
                                file_name=f"oceanembed_mission_{context['date']}.json", mime="application/json",
-                               key="mission-download", icon=":material/download:")
+                               key="mission-download", icon=":material/download:", on_click="ignore")
         with export_btn2:
             st.download_button("Download sounding (CF-1.8 NetCDF .nc)",
                                export_profile_to_netcdf(profile, context),
                                file_name=f"oceanembed_sounding_{context['date']}.nc", mime="application/x-netcdf",
-                               key="mission-netcdf-download", icon=":material/download:")
+                               key="mission-netcdf-download", icon=":material/download:", on_click="ignore")
         with export_btn3:
             st.download_button("Download executive briefing (.md)",
                                generate_mission_briefing(context, metrics),
                                file_name=f"oceanembed_executive_briefing_{context['date']}.md", mime="text/markdown",
-                               key="mission-briefing-download", icon=":material/description:")
+                               key="mission-briefing-download", icon=":material/description:", on_click="ignore")

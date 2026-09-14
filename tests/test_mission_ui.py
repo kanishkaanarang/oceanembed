@@ -10,8 +10,9 @@ class MissionDashboardTests(unittest.TestCase):
         app_path = Path(__file__).resolve().parents[1] / "app.py"
         page = AppTest.from_file(str(app_path), default_timeout=60).run()
         self.assertEqual(len(page.exception), 0, str(page.exception))
+        page.radio(key="workspace_page").set_value("Mission Intelligence").run()
         self.assertIn("TCHP / OHC above 26°C", [m.label for m in page.metric])
-        self.assertEqual(len(page.tabs), 4)
+        self.assertEqual(len(page.radio(key="workspace_page").options), 6)
         table_columns = [list(df.value.columns) for df in page.dataframe]
         chart_count = len(page.get("plotly_chart"))
         page.checkbox(key="mission-svp-preview").check().run()
