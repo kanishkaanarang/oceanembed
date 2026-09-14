@@ -64,3 +64,6 @@ extracted_text.txt
 .agents/
 .claude/
 .streamlit-packages/
+.coordination/
+scratch/
+results/*_smoke*/

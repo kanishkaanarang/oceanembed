@@ -1,0 +1,100 @@
+{
+  "model": "OceanEmbedNet_v2_CNN",
+  "validation_days": 6,
+  "overall_rmse": 0.828,
+  "overall_mae": 0.603,
+  "r2_score": 0.9871,
+  "baseline_rmse": 3.6,
+  "depth_breakdown": [
+    {
+      "depth_m": 0,
+      "rmse_celsius": 0.577,
+      "mae_celsius": 0.44,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 5,
+      "rmse_celsius": 0.644,
+      "mae_celsius": 0.5,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 10,
+      "rmse_celsius": 0.582,
+      "mae_celsius": 0.434,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 20,
+      "rmse_celsius": 0.611,
+      "mae_celsius": 0.461,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 30,
+      "rmse_celsius": 0.588,
+      "mae_celsius": 0.429,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 50,
+      "rmse_celsius": 0.872,
+      "mae_celsius": 0.692,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 75,
+      "rmse_celsius": 1.249,
+      "mae_celsius": 1.02,
+      "status": "GOOD"
+    },
+    {
+      "depth_m": 100,
+      "rmse_celsius": 1.272,
+      "mae_celsius": 1.008,
+      "status": "GOOD"
+    },
+    {
+      "depth_m": 125,
+      "rmse_celsius": 1.212,
+      "mae_celsius": 0.948,
+      "status": "GOOD"
+    },
+    {
+      "depth_m": 150,
+      "rmse_celsius": 1.146,
+      "mae_celsius": 0.889,
+      "status": "GOOD"
+    },
+    {
+      "depth_m": 200,
+      "rmse_celsius": 0.81,
+      "mae_celsius": 0.637,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 300,
+      "rmse_celsius": 0.614,
+      "mae_celsius": 0.479,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 500,
+      "rmse_celsius": 0.493,
+      "mae_celsius": 0.362,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 700,
+      "rmse_celsius": 0.48,
+      "mae_celsius": 0.365,
+      "status": "EXCELLENT"
+    },
+    {
+      "depth_m": 1000,
+      "rmse_celsius": 0.505,
+      "mae_celsius": 0.378,
+      "status": "EXCELLENT"
+    }
+  ]
+}

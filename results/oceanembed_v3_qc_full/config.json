@@ -1,0 +1,82 @@
+{
+  "args": {
+    "data": "data/processed/multimodal_training_dataset_v3_qc.parquet",
+    "output": "results/oceanembed_v3_qc_full",
+    "epochs": 20,
+    "batch_size": 256,
+    "patience": 6,
+    "lr": 0.0003,
+    "dropout": 0.1,
+    "alpha": 4.0,
+    "beta": 0.01,
+    "gamma": 0.1,
+    "monotonic_weight": 0.05,
+    "physics_warmup": 10.0,
+    "split": "temporal",
+    "gap_groups": 0,
+    "single_year": null,
+    "last_depth": null,
+    "workers": 0,
+    "threads": 2,
+    "seed": 42,
+    "max_rows": 0,
+    "no_amp": false
+  },
+  "model_config": {
+    "input_dim": 52,
+    "latent_dim": 128,
+    "depths": [
+      0,
+      5,
+      10,
+      20,
+      30,
+      50,
+      75,
+      100,
+      125,
+      150,
+      200,
+      300,
+      500,
+      700,
+      900
+    ],
+    "dropout": 0.1
+  },
+  "loss_config": {
+    "depths": [
+      0,
+      5,
+      10,
+      20,
+      30,
+      50,
+      75,
+      100,
+      125,
+      150,
+      200,
+      300,
+      500,
+      700,
+      900
+    ],
+    "alpha": 4.0,
+    "beta": 0.01,
+    "gamma": 0.1,
+    "monotonic_weight": 0.05
+  },
+  "data_sha256": "4ba1a67a2f7f35c2a7a19d5e5f74f5ef3f994ab9650aee64c2c08bd2c06e6994",
+  "discarded_rows": 0,
+  "split_rows": [
+    42828,
+    14276,
+    14276
+  ],
+  "device": "cpu",
+  "fp16": false,
+  "torch_version": "2.14.0+cpu",
+  "target_convention": "potential temperature theta0, practical salinity PSS-78",
+  "metrics_scope": "held-out groups"
+}

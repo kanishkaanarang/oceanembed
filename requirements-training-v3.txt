@@ -1,0 +1,4 @@
+-r requirements.txt
+# Unified torch.amp.GradScaler API used by the v3 trainer.
+torch>=2.3
+pyarrow>=14
