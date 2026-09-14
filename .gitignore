@@ -27,6 +27,7 @@ notebooks/data/processed/*
 *.nc
 *.netcdf
 *.npz
+!data/processed/oceanembed_reference_compact.npz
 
 # --- Model outputs / results (large or regenerable) ---
 results/*.pt
@@ -50,3 +51,19 @@ Thumbs.db
 *.log
 *.out
 *.synctex.gz
+
+# --- Local database & presentations ---
+oceanembed.db
+*.sqlite
+*.sqlite3
+oceanembed/
+*.docx
+*.pptx
+*.pdf
+extracted_text.txt
+.agents/
+.claude/
+.streamlit-packages/
+.coordination/
+scratch/
+results/*_smoke*/
