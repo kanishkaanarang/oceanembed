@@ -12,17 +12,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .ocean_engine import (
-    STANDARD_DEPTHS,
     predict_full_column,
     extract_satellite_surface,
     load_training_arrays,
 )
 
+from src.models.serving_engine import STANDARD_DEPTHS, get_engine
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 app = FastAPI(
     title="OceanEmbed Subsurface Estimation API",
-    version="2.0.0",
+    version="3.0.0",
     description="SIH26066: AI-driven 3D ocean temperature, salinity & sound velocity reconstruction from 2D satellite observations"
 )
 
@@ -55,90 +56,31 @@ class PredictionResponse(BaseModel):
 
 @app.get("/api/health")
 def health_check():
-    data = load_training_arrays()
-    dataset_status = "150_day_satellite_reanalysis_loaded" if data is not None else "fallback_mode"
-    return {
-        "status": "ok",
-        "service": "OceanEmbed Subsurface AI Engine",
-        "version": "2.0.0",
-        "model": "OceanEmbedNet_v2_CNN",
-        "dataset_status": dataset_status
-    }
+    engine = get_engine()
+    return {"status": "ok", "service": "OceanEmbed Subsurface AI Engine", "version": "3.0.0",
+            "model": engine.model_name, "dataset_status": engine.dataset_mode}
+
 
 @app.get("/api/model/info")
 def get_model_info():
-    """Returns AI model architecture specifications, training metrics, and resolution."""
-    return {
-        "model_name": "OceanEmbedNet v2",
-        "architecture": "2D Convolutional Encoder-Decoder (4-layer CNN with latent embedding)",
-        "input_channels": [
-            "SST (Sea Surface Temperature, °C)",
-            "SSS (Sea Surface Salinity, PSU)",
-            "SSH (Sea Surface Height / SLA, m)",
-            "uwnd (10m Zonal Wind speed, m/s)",
-            "vwnd (10m Meridional Wind speed, m/s)",
-            "ucurr (Zonal Surface Current, m/s)",
-            "vcurr (Meridional Surface Current, m/s)"
-        ],
-        "output_depths_m": STANDARD_DEPTHS,
-        "spatial_grid": {
-            "region": "North Indian Ocean (Bay of Bengal & Arabian Sea)",
-            "latitude_bounds": [5.0, 29.75],
-            "longitude_bounds": [45.0, 104.75],
-            "resolution": "0.25 degree (~25 km)"
-        },
-        "performance": {
-            "overall_rmse_celsius": 0.828,
-            "overall_mae_celsius": 0.603,
-            "r2_agreement": 0.9871,
-            "baseline_rmse_celsius": 3.600,
-            "error_reduction_pct": 77.0
-        }
-    }
+    engine = get_engine()
+    return {"model_name": engine.model_name, "architecture": "Depth-wise residual SE network with dual T/S heads",
+            "weights": engine.model_path.name, "latent_dim": 128,
+            "input_channels": engine.processor['columns'], "output_depths_m": STANDARD_DEPTHS,
+            "performance": engine.report['test'],
+            "evaluation_scope": "Five GLORYS days; held-out day 5; 0-900 m. Not independent Argo validation."}
+
 
 @app.get("/api/model/metrics")
 def get_model_benchmark_metrics():
-    """Returns depth-by-depth accuracy metrics and comparison against baseline."""
-    eval_file = ROOT / "results" / "latest_evaluation_summary.json"
-    bench_file = ROOT / "results" / "model_benchmark_metrics.json"
+    return get_engine().report
 
-    if eval_file.exists():
-        with open(eval_file, "r") as f:
-            return json.load(f)
-    elif bench_file.exists():
-        with open(bench_file, "r") as f:
-            return json.load(f)
-
-    # Standard metrics if file not generated yet
-    return {
-        "overall_rmse": 0.828,
-        "overall_mae": 0.603,
-        "r2_score": 0.9871,
-        "baseline_rmse": 3.600,
-        "depth_breakdown": [
-            {"depth_m": 0, "rmse_celsius": 0.577, "mae_celsius": 0.440},
-            {"depth_m": 5, "rmse_celsius": 0.644, "mae_celsius": 0.500},
-            {"depth_m": 10, "rmse_celsius": 0.582, "mae_celsius": 0.434},
-            {"depth_m": 20, "rmse_celsius": 0.611, "mae_celsius": 0.461},
-            {"depth_m": 30, "rmse_celsius": 0.588, "mae_celsius": 0.429},
-            {"depth_m": 50, "rmse_celsius": 0.872, "mae_celsius": 0.692},
-            {"depth_m": 75, "rmse_celsius": 1.249, "mae_celsius": 1.020},
-            {"depth_m": 100, "rmse_celsius": 1.272, "mae_celsius": 1.008},
-            {"depth_m": 125, "rmse_celsius": 1.212, "mae_celsius": 0.948},
-            {"depth_m": 150, "rmse_celsius": 1.146, "mae_celsius": 0.889},
-            {"depth_m": 200, "rmse_celsius": 0.810, "mae_celsius": 0.637},
-            {"depth_m": 300, "rmse_celsius": 0.614, "mae_celsius": 0.479},
-            {"depth_m": 500, "rmse_celsius": 0.493, "mae_celsius": 0.362},
-            {"depth_m": 700, "rmse_celsius": 0.480, "mae_celsius": 0.365},
-            {"depth_m": 1000, "rmse_celsius": 0.505, "mae_celsius": 0.378},
-        ]
-    }
 
 @app.get("/api/satellite/live")
 def get_live_satellite(
     lat: float = Query(15.0, description="Latitude in degrees North"),
     lon: float = Query(88.0, description="Longitude in degrees East"),
-    date: str = Query("2023-01-05", description="Observation date (YYYY-MM-DD)")
+    date: str = Query("2023-03-01", description="Observation date (YYYY-MM-DD)")
 ):
     """Returns live SST, SSS, SSH, wind and ocean surface current for chosen coordinates."""
     return extract_satellite_surface(lat, lon, date)
@@ -147,11 +89,11 @@ def get_live_satellite(
 def get_predicted_profile(
     lat: float = Query(15.0, description="Latitude in degrees North"),
     lon: float = Query(88.0, description="Longitude in degrees East"),
-    date: str = Query("2023-01-05", description="Observation date (YYYY-MM-DD)")
+    date: str = Query("2023-03-01", description="Observation date (YYYY-MM-DD)")
 ):
     """
     Computes full 3D subsurface ocean column reconstruction (Temperature, Salinity, Density, Sound Speed)
-    from surface satellite observations using the OceanEmbedNet v2 CNN.
+    from surface satellite observations using the OceanEmbedNet v3 SE-ResNet.
     """
     try:
         result = predict_full_column(lat, lon, date)

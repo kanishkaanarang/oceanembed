@@ -32,15 +32,15 @@ def test_transect_every_layer_both_axes_and_return_navigation():
     for layer in page.selectbox(key='variable').options:
         page.selectbox(key='variable').select(layer).run()
         assert not page.exception, str(page.exception)
-        page.radio(key='explore_view_mode').set_value('Vertical Transect Curtain (0–1000m)').run()
+        page.radio(key='explore_view_mode').set_value('Vertical Transect Curtain (0–900m)').run()
         for orientation in page.radio(key='transect_axis_choice').options:
             page.radio(key='transect_axis_choice').set_value(orientation).run()
             assert not page.exception, str(page.exception)
         page.radio(key='explore_view_mode').set_value('Horizontal Map (Depth Slice)').run()
-    page.radio(key='explore_view_mode').set_value('Vertical Transect Curtain (0–1000m)').run()
+    page.radio(key='explore_view_mode').set_value('Vertical Transect Curtain (0–900m)').run()
     page.radio(key='workspace_page').set_value('Overview').run()
     page.radio(key='workspace_page').set_value('Ocean Explorer').run()
-    assert page.radio(key='explore_view_mode').value == 'Vertical Transect Curtain (0–1000m)'
+    assert page.radio(key='explore_view_mode').value == 'Vertical Transect Curtain (0–900m)'
     assert page.selectbox(key='variable').value == 'Confidence'
     assert not page.exception
 

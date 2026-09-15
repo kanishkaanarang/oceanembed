@@ -276,7 +276,7 @@ def extract_satellite_surface(lat: float, lon: float, date: str = "2023-01-05") 
         "source": "climatology_fallback"
     }
 
-def predict_full_column(lat: float, lon: float, date: str = "2023-01-05", depths: Optional[List[int]] = None) -> Dict[str, Any]:
+def predict_full_column_v2(lat: float, lon: float, date: str = "2023-01-05", depths: Optional[List[int]] = None) -> Dict[str, Any]:
     """
     Computes full 3D vertical ocean reconstruction (Temperature, Salinity, Density, Sound Speed)
     using the trained OceanEmbedNet v2 CNN model.
@@ -371,6 +371,40 @@ def predict_full_column(lat: float, lon: float, date: str = "2023-01-05", depths
         "mission_intelligence": compute_mission_metrics(depths, temps, sound_speeds),
         "profile": profile_tiers
     }
+
+def predict_full_column(lat: float, lon: float, date: str = "2023-02-01", depths=None):
+    """Serve the same v3 T/S checkpoint and physical column as Streamlit."""
+    from datetime import date as Date
+    from backend import reconstruct, get_surface_conditions
+    from src.models.serving_engine import STANDARD_DEPTHS as v3_depths
+    selected = np.asarray(v3_depths if depths is None else depths, dtype=float)
+    if (selected.ndim != 1 or not selected.size or not np.isfinite(selected).all()
+            or (selected < 0).any() or (selected > v3_depths[-1]).any()):
+        raise ValueError("V3 supports finite depths between 0 and 900 m; no extrapolation is performed.")
+    day = Date.fromisoformat(date)
+    frame = reconstruct(lat, lon, day)
+    temperature = np.interp(selected, frame.depth_m, frame.temperature_c)
+    salinity = np.interp(selected, frame.depth_m, frame.salinity_psu)
+    from backend import calc_density, calc_sound_speed
+    rho = calc_density(temperature, salinity)
+    sound = calc_sound_speed(temperature, salinity, selected)
+    sat = get_surface_conditions(lat, lon, day)
+    sat.update(ssh=sat['sla'], wind_u=sat['uwnd'], wind_v=sat['vwnd'],
+               current_u=sat['ucurr'], current_v=sat['vcurr'],
+               grid_lat=sat['latitude'], grid_lon=sat['longitude'])
+    ordered = np.argsort(selected)
+    mission = compute_mission_metrics(frame.depth_m, frame.temperature_c, frame.sound_speed_m_s,
+                                      salinities=frame.salinity_psu, densities=frame.density_kg_m3)
+    return dict(location=dict(latitude=lat, longitude=lon), date=date,
+        model_provenance="oceanembed_v3_se_resnet", surface_satellite_inputs=sat,
+        thermocline_depth_estimate_m=detect_thermocline(frame.depth_m.to_list(), frame.temperature_c.to_list()),
+        sofar_axis_depth_m=detect_sofar_channel(frame.depth_m.to_list(), frame.sound_speed_m_s.to_list()),
+        hydrostatic_stability="inversion_warning" if (np.diff(rho[ordered]) < 0).any() else "stable",
+        mission_intelligence=mission,
+        profile=[dict(depth=float(d), temperature=float(ti), salinity=float(si),
+                      density=float(ri), sound_speed=float(ci))
+                 for d, ti, si, ri, ci in zip(selected, temperature, salinity, rho, sound)])
+
 
 if __name__ == "__main__":
     test_res = predict_full_column(15.0, 88.0, "2023-01-05")

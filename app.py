@@ -181,6 +181,8 @@ def initialize_state() -> None:
 
 
 initialize_state()
+if st.session_state.get("explore_view_mode") == "Vertical Transect Curtain (0–1000m)":
+    st.session_state.explore_view_mode = "Vertical Transect Curtain (0–900m)"
 # Keep optional widget values when their page is not mounted.
 for state_key in ("mission-svp-preview", "mission-ray-preview", "explore_view_mode", "transect_axis_choice",
                   "comparison_date", "comparison_latitude", "comparison_longitude"):
@@ -571,9 +573,9 @@ def map_figure(grid: pd.DataFrame, latitude: float, longitude: float, variable: 
 def profile_figure(profile: pd.DataFrame, variable: str, colors: dict[str, str], comparison_profile: pd.DataFrame | None = None) -> go.Figure:
     single_variables = {
         "Confidence": ("confidence_pct", "Model confidence", "%"),
-        "Ground Truth": ("argo_temperature_c", "GLORYS temperature", "?C"),
-        "Residual": ("error_c", "Absolute temperature residual", "?C"),
-        "Density": ("density_kg_m3", "Seawater density", "kg/m?"),
+        "Ground Truth": ("argo_temperature_c", "GLORYS temperature", "°C"),
+        "Residual": ("error_c", "Absolute temperature residual", "°C"),
+        "Density": ("density_kg_m3", "Seawater density", "kg/m³"),
         "Sound Speed": ("sound_speed_m_s", "Sound speed", "m/s"),
     }
     if variable in single_variables:
@@ -601,7 +603,7 @@ def profile_figure(profile: pd.DataFrame, variable: str, colors: dict[str, str],
     if variable == "Salinity":
         estimate, lower, upper, reference, unit = "salinity_psu", "salinity_lower_psu", "salinity_upper_psu", "argo_salinity_psu", "PSU"
     else:
-        estimate, lower, upper, reference, unit = "temperature_c", "temperature_lower_c", "temperature_upper_c", "argo_temperature_c", "?C"
+        estimate, lower, upper, reference, unit = "temperature_c", "temperature_lower_c", "temperature_upper_c", "argo_temperature_c", "°C"
 
     figure = go.Figure()
     figure.add_trace(go.Scatter(x=profile[upper], y=profile["depth_m"], mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False))
@@ -612,27 +614,28 @@ def profile_figure(profile: pd.DataFrame, variable: str, colors: dict[str, str],
         line=dict(width=0),
         fill="tonextx",
         fillcolor="rgba(0, 180, 216, 0.18)",
-        name="Validated uncertainty (±1σ)",
+        name="Recorded test RMSE band",
         hoverinfo="skip",
     ))
     figure.add_trace(go.Scatter(
         x=profile[estimate],
         y=profile["depth_m"],
         mode="lines+markers",
-        name="OceanEmbedNet (CNN)",
+        name="OceanEmbedNet v3",
         line=dict(color=colors["model"], width=3.5),
         marker=dict(size=6),
         hovertemplate=f"Depth: %{{y}}m<br>Estimate: %{{x:.2f}} {unit}<extra></extra>",
     ))
-    figure.add_trace(go.Scatter(
-        x=profile[reference],
-        y=profile["depth_m"],
-        mode="lines+markers",
-        name="GLORYS Actual (Reanalysis)",
-        line=dict(color=colors["reference"], width=2.2, dash="dot"),
-        marker=dict(size=5),
-        hovertemplate=f"Depth: %{{y}}m<br>Ground truth: %{{x:.2f}} {unit}<extra></extra>",
-    ))
+    if profile[reference].notna().any():
+        figure.add_trace(go.Scatter(
+            x=profile[reference],
+            y=profile["depth_m"],
+            mode="lines+markers",
+            name="GLORYS reference (900 m interpolated)",
+            line=dict(color=colors["reference"], width=2.2, dash="dot"),
+            marker=dict(size=5),
+            hovertemplate=f"Depth: %{{y}}m<br>Ground truth: %{{x:.2f}} {unit}<extra></extra>",
+        ))
     if comparison_profile is not None:
         figure.add_trace(go.Scatter(
             x=comparison_profile[estimate],
@@ -741,8 +744,10 @@ with st.sidebar:
     st.title("OceanEmbed", icon=":material/waves:")
     st.caption("Subsurface ocean reconstruction")
     engine_obj = get_engine()
+    if st.session_state.get("depth") not in list(DEPTHS):
+        st.session_state.depth = int(DEPTHS[-1])
     dataset_label = "150-Day Reanalysis" if not engine_obj.is_compact else "Compact Reference Dataset"
-    st.badge(f"PyTorch CNN · {dataset_label}", icon=":material/bolt:", color="green")
+    st.badge(f"PyTorch v3 · {dataset_label}", icon=":material/bolt:", color="green")
     st.toggle(
         "Dark mode",
         key="dark_mode",
@@ -802,10 +807,10 @@ with st.sidebar:
     st.button("Save current location", icon=":material/bookmark_add:", width="stretch", on_click=save_current_location, key="save-location")
 
     with st.expander("Loaded model & data", icon=":material/verified_user:"):
-        st.write("**Serving model:** OceanEmbedNet v2 · 7-channel CNN")
+        st.write(f"**Serving model:** {engine_obj.model_name}")
         st.caption(f"Weights: {Path(engine_obj.model_path).name if engine_obj.model_loaded else 'Not loaded'}")
         st.caption(f"Data mode: {engine_obj.dataset_mode}")
-        st.caption("The separate v3 experiment and its test scope are documented on Validation.")
+        st.caption("V3 predicts temperature and salinity at 15 depths through 900 m. Limited evaluation scope is documented on Validation.")
 
 
 
@@ -839,7 +844,7 @@ mission_context = {
     "requested_location": {"latitude": latitude, "longitude": longitude},
     "sampled_location": {"latitude": surface["latitude"], "longitude": surface["longitude"]},
     "dataset_mode": engine_obj.dataset_mode,
-    "model": "OceanEmbedNet v2 CNN" if engine_obj.model_loaded else "Untrained model fallback",
+    "model": engine_obj.model_name,
 }
 comparison_context = None
 if comparison_surface is not None:
@@ -912,7 +917,7 @@ def render_overview():
 def render_explore():
     view_mode = st.radio(
         "Exploration View",
-        ["Horizontal Map (Depth Slice)", "Vertical Transect Curtain (0–1000m)"],
+        ["Horizontal Map (Depth Slice)", "Vertical Transect Curtain (0–900m)"],
         horizontal=True,
         key="explore_view_mode",
         label_visibility="collapsed",
@@ -948,7 +953,7 @@ def render_explore():
                 coord_val = latitude if axis_key == "lat" else longitude
                 t_data = transect(coord_val, axis=axis_key, variable=variable, analysis_date=analysis_date)
                 render_chart(transect_figure(t_data, variable, colors), width="stretch", config={"displayModeBar": False})
-                st.caption(f"2D Basin Cross-Section along {t_data['fixed_label']}. Reveals subsurface isotherm slopes, thermocline depth variations, and water mass boundaries down to 1000m.")
+                st.caption(f"2D Basin Cross-Section along {t_data['fixed_label']}. Reveals subsurface isotherm slopes, thermocline depth variations, and water mass boundaries down to 900m.")
         with t_meta_col:
             with st.container(border=True, key="transect-meta-card"):
                 st.subheader("Transect Intelligence", icon=":material/analytics:")
@@ -968,14 +973,14 @@ def render_explore():
             width="stretch",
             column_config={
                 "depth_m": st.column_config.NumberColumn("Depth", format="%d m"),
-                "temperature_c": st.column_config.NumberColumn("CNN Temp (°C)", format="%.2f °C"),
+                "temperature_c": st.column_config.NumberColumn("V3 Temp (°C)", format="%.2f °C"),
                 "argo_temperature_c": st.column_config.NumberColumn("GLORYS Actual (°C)", format="%.2f °C"),
                 "error_c": st.column_config.NumberColumn("Residual Error", format="%.2f °C"),
                 "salinity_psu": st.column_config.NumberColumn("Salinity (PSU)", format="%.3f"),
                 "density_kg_m3": st.column_config.NumberColumn("Density (kg/m³)", format="%.2f"),
                 "sound_speed_m_s": st.column_config.NumberColumn("Sound Speed (m/s)", format="%.1f"),
                 "confidence_pct": st.column_config.ProgressColumn("Confidence", min_value=0, max_value=100, format="%d%%"),
-                "uncertainty_c": st.column_config.NumberColumn("±1σ Uncertainty", format="±%.2f °C"),
+                "uncertainty_c": st.column_config.NumberColumn("Test RMSE band", format="±%.2f °C"),
             },
         )
 
@@ -1001,7 +1006,7 @@ def render_explore():
             on_click="ignore",
         )
     with note_col:
-        st.caption("Temperature uses the loaded CNN. Salinity and derived fields are diagnostic estimates; confidence is a heuristic, not a calibrated probability.")
+        st.caption("Temperature and salinity use the loaded v3 checkpoint. Density and sound speed are derived; confidence is a heuristic, not a calibrated probability. The 900 m temperature reference is interpolated from 700/1000 m.")
 
 
 def render_profile():
@@ -1098,14 +1103,14 @@ def render_profile():
                 height=450,
                 column_config={
                     "depth_m": st.column_config.NumberColumn("Depth", format="%d m"),
-                    "temperature_c": st.column_config.NumberColumn("CNN Temp (°C)", format="%.2f °C"),
+                    "temperature_c": st.column_config.NumberColumn("V3 Temp (°C)", format="%.2f °C"),
                     "argo_temperature_c": st.column_config.NumberColumn("GLORYS Actual (°C)", format="%.2f °C"),
                     "error_c": st.column_config.NumberColumn("Residual", format="%.2f °C"),
                     "salinity_psu": st.column_config.NumberColumn("Salinity (PSU)", format="%.3f"),
                     "density_kg_m3": st.column_config.NumberColumn("Density (kg/m³)", format="%.2f"),
                     "sound_speed_m_s": st.column_config.NumberColumn("Sound Speed (m/s)", format="%.1f"),
                     "confidence_pct": st.column_config.ProgressColumn("Confidence", min_value=0, max_value=100, format="%d%%"),
-                    "uncertainty_c": st.column_config.NumberColumn("±1σ Uncertainty", format="±%.2f °C"),
+                    "uncertainty_c": st.column_config.NumberColumn("Test RMSE band", format="±%.2f °C"),
                 },
             )
             dl_col1, dl_col2 = st.columns(2)
@@ -1149,64 +1154,80 @@ def render_profile():
 
     with st.expander("Multi-Variable Hydrographic Sounding (T-S-c Overlay)", expanded=False, icon=":material/stacked_line_chart:"):
         render_chart(multi_variable_figure(profile, colors), width="stretch", key="profile-multi-var-chart")
-        st.caption("Synchronized vertical soundings of reconstructed Temperature (°C), Salinity (PSU), and Mackenzie (1981) Sound Speed (m/s) across the 0–1000m column.")
+        st.caption("Synchronized vertical soundings of reconstructed Temperature (°C), Salinity (PSU), and Mackenzie (1981) Sound Speed (m/s) across the 0–900m column.")
 
 
 def render_quality():
 
     with st.container(border=True):
-        st.subheader("V3 research experiment")
+        st.subheader("Serving v3 - recorded test evaluation")
         report_path = Path(__file__).resolve().parent / "results/oceanembed_v3_qc_full/metrics.json"
         if report_path.exists():
             report = json.loads(report_path.read_text(encoding="utf-8"))
             col_t, col_s = st.columns(2)
             col_t.metric("V3 test temperature RMSE", f"{report['test']['temperature']['rmse']:.3f} °C")
             col_s.metric("V3 test salinity RMSE", f"{report['test']['salinity']['rmse']:.3f} PSU")
-            st.caption("Separate candidate model: five GLORYS days, held-out day 5, supported columns through 900 m. These are not the live map model's scores or independent satellite-to-Argo validation.")
+            st.caption("Loaded v3 checkpoint: five GLORYS days, held-out day 5, through 900 m. These recorded scores apply to that test split, not every displayed date or region, and are not independent satellite-to-Argo validation.")
             st.download_button("Download v3 evaluation (JSON)", report_path.read_bytes(), "oceanembed_v3_evaluation.json", "application/json", key="v3-evaluation-download", on_click="ignore")
         else:
             st.info("Train the v3 candidate to generate its evaluation report.")
-    st.subheader("Serving CNN evaluation")
-    chart_col, details_col = st.columns([1.2, 1], gap="large")
-    with chart_col:
-        with st.container(border=True, key="validation-card"):
-            st.subheader("Depth-wise model validation error", icon=":material/verified:")
-            render_chart(validation_figure(depth_metrics, colors), width="stretch", config={"displayModeBar": False})
-    with details_col:
-        with st.container(border=True, key="quality-notes"):
-            st.subheader("Per-depth performance benchmarks", icon=":material/analytics:")
-            st.dataframe(
-                themed_table(depth_metrics, is_dark),
-                hide_index=True,
-                height=300,
-                column_config={
-                    "depth_m": st.column_config.NumberColumn("Depth", format="%d m"),
-                    "rmse_c": st.column_config.NumberColumn("RMSE (°C)", format="%.3f"),
-                    "mae_c": st.column_config.NumberColumn("MAE (°C)", format="%.3f"),
-                    "bias_c": st.column_config.NumberColumn("Bias (°C)", format="%+.3f"),
-                    "r2_corr": st.column_config.NumberColumn("R² Corr", format="%.3f"),
-                },
-            )
+    v3_report = engine_obj.report
+    errors = pd.DataFrame({"Depth (m)": v3_report['depths_m'],
+        "Temperature RMSE (C)": v3_report['test']['temperature']['rmse_by_depth'],
+        "Salinity RMSE (PSU)": v3_report['test']['salinity']['rmse_by_depth']})
+    st.subheader("V3 error by depth")
+    for col, (label, unit) in zip(st.columns(2), [("Temperature RMSE (C)", "C"), ("Salinity RMSE (PSU)", "PSU")]):
+        with col:
+            figure = go.Figure(go.Bar(x=errors['Depth (m)'].astype(str), y=errors[label],
+                                     name=label, marker_color=colors['model']))
+            figure.update_layout(height=300, xaxis_title="Depth (m)", yaxis_title=label,
+                                 paper_bgcolor=colors['paper'], plot_bgcolor=colors['panel'])
+            render_chart(figure, width="stretch", config={"displayModeBar": False})
+    st.dataframe(themed_table(errors, is_dark), hide_index=True, width="stretch")
+    st.caption("Benchmark and model below use the same held-out day. Test RMSE bands are not calibrated confidence intervals.")
+    st.dataframe(themed_table(validation, is_dark), hide_index=True, width="stretch")
+    with st.expander("Historical v2 evaluation and explainability"):
+        st.subheader("Historical v2 CNN evaluation")
+        chart_col, details_col = st.columns([1.2, 1], gap="large")
+        with chart_col:
+            with st.container(border=True, key="validation-card"):
+                st.subheader("Depth-wise model validation error", icon=":material/verified:")
+                render_chart(validation_figure(depth_metrics, colors), width="stretch", config={"displayModeBar": False})
+        with details_col:
+            with st.container(border=True, key="quality-notes"):
+                st.subheader("Per-depth performance benchmarks", icon=":material/analytics:")
+                st.dataframe(
+                    themed_table(depth_metrics, is_dark),
+                    hide_index=True,
+                    height=300,
+                    column_config={
+                        "depth_m": st.column_config.NumberColumn("Depth", format="%d m"),
+                        "rmse_c": st.column_config.NumberColumn("RMSE (°C)", format="%.3f"),
+                        "mae_c": st.column_config.NumberColumn("MAE (°C)", format="%.3f"),
+                        "bias_c": st.column_config.NumberColumn("Bias (°C)", format="%+.3f"),
+                        "r2_corr": st.column_config.NumberColumn("R² Corr", format="%.3f"),
+                    },
+                )
 
-    st.subheader("Trained model evaluation artifacts", icon=":material/image:")
-    img_col1, img_col2 = st.columns(2, gap="large")
-    with img_col1:
-        scatter_img = Path(__file__).resolve().parent / "results" / "validation_scatter_agreement.png"
-        if scatter_img.exists():
-            st.image(str(scatter_img), caption="Prediction vs Actual Agreement Scatter Plot", width="stretch")
-        else:
-            st.info("Validation scatter plot in results directory.")
-    with img_col2:
-        error_map_img = Path(__file__).resolve().parent / "results" / "validation_error_map.png"
-        if error_map_img.exists():
-            st.image(str(error_map_img), caption="Basin-wide Validation Error Distribution Map", width="stretch")
-        else:
-            st.info("Validation error map in results directory.")
+        st.subheader("Historical v2 evaluation artifacts", icon=":material/image:")
+        img_col1, img_col2 = st.columns(2, gap="large")
+        with img_col1:
+            scatter_img = Path(__file__).resolve().parent / "results" / "validation_scatter_agreement.png"
+            if scatter_img.exists():
+                st.image(str(scatter_img), caption="Prediction vs Actual Agreement Scatter Plot", width="stretch")
+            else:
+                st.info("Validation scatter plot in results directory.")
+        with img_col2:
+            error_map_img = Path(__file__).resolve().parent / "results" / "validation_error_map.png"
+            if error_map_img.exists():
+                st.image(str(error_map_img), caption="Basin-wide Validation Error Distribution Map", width="stretch")
+            else:
+                st.info("Validation error map in results directory.")
 
-    with st.expander("Feature importance & SHAP attribution analysis", icon=":material/psychology:"):
-        shap_img = Path(__file__).resolve().parent / "results" / "shap_summary_v2.png"
-        if shap_img.exists():
-            st.image(str(shap_img), caption="SHAP Summary: Importance of Surface Satellite Channels on Subsurface Inversion", width="stretch")
+        with st.expander("Feature importance & SHAP attribution analysis", icon=":material/psychology:"):
+            shap_img = Path(__file__).resolve().parent / "results" / "shap_summary_v2.png"
+            if shap_img.exists():
+                st.image(str(shap_img), caption="SHAP Summary: Importance of Surface Satellite Channels on Subsurface Inversion", width="stretch")
 
 
 def render_data():
@@ -1220,20 +1241,16 @@ def render_data():
     spec_col1, spec_col2 = st.columns(2, gap="large")
     with spec_col1:
         with st.container(border=True, key="data-card"):
-            st.subheader("Deep CNN Specifications", icon=":material/code:")
+            st.subheader("V3 model specifications", icon=":material/code:")
             st.markdown(
                 """
-                - **Network Backbone**: `OceanEmbedNet` (Encoder-Decoder CNN)
-                - **Input Channels (7)**:
-                  1. `SST`: Sea Surface Temperature (°C)
-                  2. `SSS`: Sea Surface Salinity (PSU)
-                  3. `SSH/SLA`: Sea Level Anomaly (m)
-                  4. `uwnd`: Zonal Surface Wind Vector (m/s)
-                  5. `vwnd`: Meridional Surface Wind Vector (m/s)
-                  6. `ucurr`: Zonal Surface Geostrophic Current (m/s)
-                  7. `vcurr`: Meridional Surface Current (m/s)
-                - **Latent Embedding**: 32-channel oceanographic feature representation
-                - **Output Channels**: 15 standard oceanographic depth layers (0–1000m)
+                - **Network Backbone**: `OceanEmbedNet_v3` with three depth-wise residual SE blocks
+                - **Inputs**: SST, SSS, SSH, current u/v, latitude, longitude, and seasonal sine/cosine
+                - **Feature Pipeline**: 26 engineered features plus 26 missing-value indicators
+                - **Wind**: Available as surface context; this checkpoint does not use wind features
+                - **Latent Embedding**: 128-dimensional shared ocean representation
+                - **Outputs**: Separate temperature and salinity heads, 15 depths (0-900m)
+                - **Training**: Joint T/S loss with density stability and thermocline penalties
                 - **Resolution**: 0.25° horizontal mesh (100 lat × 240 lon = 24,000 nodes)
                 """
             )

@@ -1,3 +1,11 @@
+> **Current serving release: OceanEmbedNet v3.** Streamlit and the profile API use
+> `results/oceanembed_v3_qc_full/best.pt`, its saved feature preprocessing, and
+> dual temperature/salinity heads at 15 depths through **900 m**. This checkpoint
+> does not support 1000 m. Recorded test RMSE is approximately 0.271 C / 0.103 PSU
+> on held-out day 5 of a five-day GLORYS experiment; this is not independent Argo
+> validation or a guaranteed score for all displayed dates. V2 information below
+> describes the historical model. See `docs/SHOWCASE_WALKTHROUGH.md`.
+
 # OceanEmbed 🌊
 > **Deep Learning 3D Subsurface Ocean State Reconstruction from Surface Satellite Observations**
 

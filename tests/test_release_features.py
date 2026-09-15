@@ -65,7 +65,7 @@ def test_map_layers_dates_depths_and_preview_persistence(dark):
             if isinstance(x, dict):
                 x = np.frombuffer(base64.b64decode(x['bdata']), dtype=x['dtype'])
             np.testing.assert_allclose(x, page.dataframe[0].value[column])
-    for day, depth in [(backend.ANALYSIS_START, 0), (backend.ANALYSIS_END, 1000)]:
+    for day, depth in [(backend.ANALYSIS_START, 0), (backend.ANALYSIS_END, int(backend.DEPTHS[-1]))]:
         page.select_slider(key='analysis_date').set_value(day).run()
         page.select_slider(key='depth').set_value(depth).run()
         assert_clean(page)

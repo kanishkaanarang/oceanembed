@@ -57,7 +57,7 @@ class ApiIndexRegressionTests(unittest.TestCase):
         with patch.object(ocean_engine, "load_training_arrays", return_value=arrays), \
              patch.object(ocean_engine, "get_oceanembed_net_weights", return_value={}), \
              patch.object(ocean_engine, "run_numpy_cnn_forward", return_value=(temperature, None)) as forward:
-            result = ocean_engine.predict_full_column(5, 45, "2023-03-01", [0, 37, 1000])
+            result = ocean_engine.predict_full_column_v2(5, 45, "2023-03-01", [0, 37, 1000])
         self.assertEqual(result["surface_satellite_inputs"]["sst"], 28)
         self.assertEqual(forward.call_args.args[0][0, 0, 0], 28)
         np.testing.assert_allclose([row["temperature"] for row in result["profile"]], [30, 29.26, 10])

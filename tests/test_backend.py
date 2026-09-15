@@ -11,14 +11,14 @@ from model_adapter import ModelOutputError, validate_profile
 
 class BackendTests(unittest.TestCase):
     def test_profile_changes_by_location_date_and_depth(self) -> None:
-        first = reconstruct(13.5, 88.5, date(2026, 1, 15))
-        second = reconstruct(15.0, 91.0, date(2026, 2, 18))
-        self.assertNotEqual(first.loc[first.depth_m == 200, "temperature_c"].iat[0], second.loc[second.depth_m == 200, "temperature_c"].iat[0])
+        first = reconstruct(13.5, 88.5, date(2023, 3, 1))
+        second = reconstruct(15.0, 91.0, date(2023, 4, 1))
+        self.assertFalse(first["temperature_c"].equals(second["temperature_c"]))
         self.assertNotEqual(first.loc[first.depth_m == 0, "temperature_c"].iat[0], first.loc[first.depth_m == 500, "temperature_c"].iat[0])
 
     def test_grid_changes_with_depth(self) -> None:
-        surface = field(13.5, 88.5, 0, "Temperature", date(2026, 1, 15))
-        deep = field(13.5, 88.5, 500, "Temperature", date(2026, 1, 15))
+        surface = field(13.5, 88.5, 0, "Temperature", date(2023, 3, 1))
+        deep = field(13.5, 88.5, 500, "Temperature", date(2023, 3, 1))
         self.assertFalse(surface["value"].equals(deep["value"]))
 
     def test_profile_contract_normalizes_minimal_model_output(self) -> None:

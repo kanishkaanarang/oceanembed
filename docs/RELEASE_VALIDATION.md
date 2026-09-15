@@ -1,5 +1,28 @@
 # Showcase release validation
 
+## V3 serving upgrade
+
+The dashboard and profile API now execute `oceanembed_v3_qc_full/best.pt` with
+its saved feature schema, missing-value indicators and target normalization.
+Both temperature and salinity are predicted. Its 15 physical depth labels end
+at 900 m; 1000 m is not relabeled or extrapolated. Existing browser selections
+are migrated to the supported range. Historical v2 artifacts remain available
+in a labeled expander.
+
+Final upgrade run: **82 tests passed, 22 subtests passed**, in 65.69 seconds.
+Two dependency deprecation warnings remain. New checks compare serving output
+directly with checkpoint inference, verify both map heads, API/dashboard
+agreement, metadata, unsupported-depth rejection and old-session migration.
+Live browser checks confirmed v3 provenance, both themes, map/profile rendering
+and the validation page without exception panels or horizontal overflow.
+
+The saved v3 test scores remain limited to held-out day 5 of the five-day
+GLORYS experiment. Serving additional dates does not expand that validation
+claim. Grid temperature reference at 900 m is interpolated from 700/1000 m;
+no measured salinity reference is fabricated.
+
+## Previous showcase release
+
 Validated on 15 September 2026 using the project's Windows virtual environment.
 
 ## Automated checks

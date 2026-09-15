@@ -1,6 +1,6 @@
 """OceanEmbed Production Model Backend.
 
-Connects the trained deep CNN (OceanEmbedNet v2) and North Indian Ocean
+Connects the trained deep CNN (OceanEmbedNet v3) and North Indian Ocean
 satellite data arrays (150 daily observations, 0.25 deg grid) to the Streamlit app.
 """
 
@@ -32,9 +32,9 @@ from src.models.oceanembed_net import (
     LON_MAX,
     LON_MIN,
     LON_STEP,
-    STANDARD_DEPTHS,
-    get_engine,
 )
+
+from src.models.serving_engine import STANDARD_DEPTHS, get_engine
 
 DEPTHS = np.array(STANDARD_DEPTHS)
 LATITUDE_RANGE = (float(LAT_MIN), float(LAT_MAX - LAT_STEP))
@@ -258,18 +258,17 @@ def reconstruct(latitude: float, longitude: float, analysis_date: date) -> pd.Da
     surface_inputs = day_data["surface_inputs"][:, lat_idx, lon_idx]
 
     surface_sss = float(surface_inputs[1]) if surface_inputs[1] > 20 else 34.2
-    salinity = surface_sss + 0.85 * (1.0 - np.exp(-DEPTHS / 250.0)) - 0.04 * (pred_temp - 20.0)
-    reference_salinity = surface_sss + 0.85 * (1.0 - np.exp(-DEPTHS / 250.0)) - 0.04 * (actual_temp - 20.0)
+    salinity = day_data["pred_salinity"][:, lat_idx, lon_idx]
+    reference_salinity = np.full(len(DEPTHS), np.nan)  # No observed salinity reference in grid arrays.
 
     metrics = get_depth_metrics()
-    rmse_by_depth = metrics["rmse_c"].to_numpy()
-    temp_unc = np.clip(rmse_by_depth, 0.5, 1.5)
-    sal_unc = 0.025 + 0.00005 * DEPTHS
+    rmse_by_depth = np.asarray(engine.report["test"]["temperature"]["rmse_by_depth"])
+    temp_unc = rmse_by_depth  # Recorded test RMSE band; not a calibrated interval.
+    sal_unc = np.asarray(engine.report["test"]["salinity"]["rmse_by_depth"])
 
-    r2 = metrics["r2_corr"].to_numpy()
     residual = np.abs(pred_temp - actual_temp)
-    # Physically calibrated confidence reflecting 77% error reduction over climatology baseline
-    confidence = np.clip(86.0 + (r2 * 10.0) - (residual * 3.5), 84, 98).round(0).astype(int)
+    # Heuristic display score, never a calibrated probability or accuracy metric.
+    confidence = np.clip(98.0 - DEPTHS * .015 - residual * 4.0, 60, 99).round().astype(int)
 
     density = calc_density(pred_temp, salinity)
     sound_speed = calc_sound_speed(pred_temp, salinity, DEPTHS)
@@ -321,18 +320,18 @@ def field(latitude: float, longitude: float, depth: int, variable: str, analysis
         unit = "°C"
     elif variable == "Salinity":
         sss = surface_inputs[1]
-        sal_field = sss + 0.85 * (1.0 - np.exp(-depth / 250.0)) - 0.04 * (pred_field - 20.0)
+        sal_field = day_data["pred_salinity"][depth_idx]
         values = np.where(mask, sal_field, np.nan)
         unit = "PSU"
     elif variable in ("Density", "Density (kg/m³)"):
         sss = surface_inputs[1]
-        sal_field = sss + 0.85 * (1.0 - np.exp(-depth / 250.0)) - 0.04 * (pred_field - 20.0)
+        sal_field = day_data["pred_salinity"][depth_idx]
         rho_field = calc_density(pred_field, sal_field)
         values = np.where(mask, rho_field, np.nan)
         unit = "kg/m³"
     elif variable in ("Sound Speed", "Speed of Sound (m/s)"):
         sss = surface_inputs[1]
-        sal_field = sss + 0.85 * (1.0 - np.exp(-depth / 250.0)) - 0.04 * (pred_field - 20.0)
+        sal_field = day_data["pred_salinity"][depth_idx]
         c_field = calc_sound_speed(pred_field, sal_field, depth)
         values = np.where(mask, c_field, np.nan)
         unit = "m/s"
@@ -398,7 +397,7 @@ def generate_profile_interpretation(
         f"Surface water is recorded at **{surface_t:.1f} °C** with salinity of **{surface_s:.1f} PSU**. "
         f"The near-surface isothermal mixed layer extends to **{mld} m**, beneath which a sharp thermocline is detected "
         f"between **{th_top} m** and **{th_bot} m** (cooling gradient: **{th_rate:.2f} °C/m**). "
-        f"Abyssal temperatures stabilize at **{deep_t:.1f} °C** at 1000 m depth. "
+        f"The deepest reconstructed temperature is **{deep_t:.1f} °C** at {int(depths[-1])} m depth. "
         f"Across all 15 depth layers, OceanEmbedNet predictions match GLORYS ground truth reanalysis with a mean absolute residual of **{mean_err:.2f} °C**."
     )
     return text
@@ -446,23 +445,13 @@ def nearby_observations(latitude: float, longitude: float, analysis_date: date) 
 
 
 def validation_summary() -> pd.DataFrame:
-    """Return model performance summary metrics across the test dataset."""
+    """Recorded v3 results and its matched training-mean baseline only."""
+    report = get_engine().report
     return pd.DataFrame({
-        "model_architecture": [
-            "OceanEmbedNet v3 (SE-ResNet PINN)",
-            "OceanEmbedNet v2 (Multi-Task CNN)",
-            "Independent Argo In-situ Floats",
-            "EN4 Climatology Baseline",
-        ],
-        "rmse_c": [0.271, 0.828, 0.99, 3.60],
-        "mean_absolute_error_c": [0.175, 0.603, 0.74, 2.85],
-        "salinity_rmse_psu": [0.103, 0.450, 0.520, 1.200],
-        "status": [
-            "State-of-the-Art (v3)",
-            "Deployed (v2)",
-            "In-situ Ground Truth",
-            "Climatology Baseline",
-        ],
+        "model_architecture": ["OceanEmbedNet v3 (SE-ResNet)", "Training-mean baseline"],
+        "rmse_c": [report['test']['temperature']['rmse'], report['train_mean_baseline_test_rmse'][0]],
+        "salinity_rmse_psu": [report['test']['salinity']['rmse'], report['train_mean_baseline_test_rmse'][1]],
+        "status": ["Same held-out day; 0-900 m", "Same held-out day; 0-900 m"],
     })
 
 
@@ -518,15 +507,15 @@ CYCLONE_EVENT_PRESETS = [
         "latitude": 13.5,
         "longitude": 88.5,
         "date": date(2023, 5, 11),
-        "description": "Category 5 equivalent super cyclone over high TCHP warm reservoir in central Bay of Bengal.",
+        "description": "Mocha-related ocean scenario on 11 May; an ocean reconstruction, not a cyclone track or intensity forecast.",
     },
     {
         "id": "cyclone_biparjoy",
         "name": "🌀 Cyclone Biparjoy (Arabian Sea)",
         "latitude": 16.5,
         "longitude": 67.5,
-        "date": date(2023, 5, 25),
-        "description": "Longest-lived Arabian Sea cyclone; rapid intensification driven by deep isothermal layer.",
+        "date": date(2023, 6, 10),
+        "description": "Biparjoy-related Arabian Sea ocean scenario on 10 June 2023; inspect the reconstructed heat reservoir.",
     },
     {
         "id": "ganga_plume",
